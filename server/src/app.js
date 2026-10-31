@@ -23,7 +23,7 @@ const WEB_DIST = process.env.WEB_DIST || path.resolve(HERE, '../../web/dist');
 const CONFIG = process.env.CUSTOMER_CONFIG || path.resolve(HERE, '../../customer.config.json');
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 
-export function createApp({ health = createHealth(), configFile = CONFIG, workspaces = createWorkspaces(), table = MOCK_TABLE } = {}) {
+export function createApp({ health = createHealth(), configFile = CONFIG, workspaces = createWorkspaces(), table = MOCK_TABLE, webDist = WEB_DIST } = {}) {
   const app = express();
   app.disable('x-powered-by');
   app.use(hostCheck);
@@ -104,7 +104,14 @@ export function createApp({ health = createHealth(), configFile = CONFIG, worksp
   api.post('/reset', (req, res) => { const id = ws(req, res); if (!id) return; noStore(res); workspaces.reset(id); return res.json({ reset: 'ok', workspace: id }); });
   api.use((_req, res) => res.status(404).json({ error: 'not_found' }));
   app.use('/api', api);
-  // Errors become short JSON. Express's default handler would send an HTML stack trace with absolute file paths.
+
+  if (fs.existsSync(path.join(webDist, 'index.html'))) {
+    app.use(express.static(webDist));
+    app.get(/^\/(?!api\/).*/, (_req, res) => res.sendFile(path.join(webDist, 'index.html')));
+  }
+  // The last two handlers catch everything that is left, for every method and every path: Express's default answers ("Cannot POST /<path>", or an
+  // HTML stack trace with file paths) would echo the path the visitor typed, which may be a token. Fixed JSON, no path.
+  app.use((_req, res) => res.status(404).json({ error: 'not_found' }));
   // eslint-disable-next-line no-unused-vars
   app.use((err, _req, res, _next) => {
     const status = Number(err?.status || err?.statusCode);
@@ -113,11 +120,6 @@ export function createApp({ health = createHealth(), configFile = CONFIG, worksp
     if (status >= 400 && status < 500) return res.status(status).json({ error: 'bad_request' });
     return res.status(500).json({ error: 'internal_error' });
   });
-
-  if (fs.existsSync(path.join(WEB_DIST, 'index.html'))) {
-    app.use(express.static(WEB_DIST));
-    app.get(/^\/(?!api\/).*/, (_req, res) => res.sendFile(path.join(WEB_DIST, 'index.html')));
-  }
   return app;
 }
 

@@ -4,7 +4,7 @@ A simulation of Ping's SaaS Access Management release claims: just-in-time, time
 
 Tier: Demo
 Repo: https://github.com/ping-sandbox/saas-access-LAB
-Catalog: none assigned yet (the content pack carries the placeholder D0)
+Catalog: D104
 
 **Tier: Demo.** Source: the Ping ID4AI Workforce H2 2026 deck, slide 51 (and 35), release 2026-11-02. **Every product claim is a Ping release claim, UNVERIFIED on our tenant.** Nothing here calls a real platform, chat tool, ticket system, gateway, identity provider or tenant, and nothing leaves your machine.
 
@@ -28,19 +28,23 @@ What it shows:
 
 The deck gives claims; the console swagger of 2026-10-31 (schema only) gives field names. Everything else here is the lab's own, and each field is tagged in the app as "console swagger name (schema only)", "lab reading" or "lab-invented" (a swagger name proves a field exists, not how it behaves):
 
-- **Swagger names used as a lab reading.** `Sync` (the schema gives it to the Databricks, Salesforce and Snowflake account objects; the lab reads it as "the reconcile reads this platform"), `Hitl` (Slack integration, Jira project, ServiceNow table; the lab uses it as where approval requests go), `ApproverNotifications`, `WorkspaceID`, `RetiredAt` and the approval fields (`RequiredApprovals`, `RequireDistinctApprovers`, `Approvers`, `ExpiresAt`, `NotifiedLevel`, `ApprovedBy`, `DeniedBy`, `DecidedAt`, `GrantID`, `JiraTicketID`, `ServiceNowTableRecordId`, `MsTeamsChannelMsgID` and others). They belong to agent approvals and to integration objects; reusing them for SaaS access requests is the lab's reading. `EnableSSO`, `SSOUrl`, `TokenOwner`, `Error`, `ParentTeamId` and `NotificationSetting` exist in the schema and are not modelled.
-- **Everything about requests, grants, receipts, policies, drift findings and the audit trail.** The request and grant shapes, the three-state grant, the four approver roles, the 1 to 3 level chain, the auto-approval rule, the 7 day cap, the approval window, the highest-level and restore-to-what-it-was rules for reference counting, the reaper's 5 lab minute wake-up, the 02:00 nightly reconcile, the three finding kinds and the remediation.
-- **The receipt hash chain.** Each receipt carries the sha256 of the one before it, so a change to any of them is detectable (verified from the receipts, not stored). The product's receipt format is not public.
+- **Swagger names used as a lab reading.** In the app, a bare field name that exists in the console schema is tagged "console swagger name (schema only)"; beside the BEHAVIOUR the lab gives it, the tag is "lab reading". `Sync` (the schema gives it to the Databricks, Salesforce and Snowflake account objects; the lab reads it as "the reconcile reads this platform"), `Hitl` (Slack integration, Jira project, ServiceNow table; the lab uses it as where approval requests go), `ApproverNotifications`, `WorkspaceID`, `RetiredAt` and the approval fields (`RequiredApprovals`, `RequireDistinctApprovers`, `Approvers`, `ExpiresAt`, `NotifiedLevel`, `ApprovedBy`, `DeniedBy`, `DecidedAt`, `GrantID`, `JiraTicketID`, `ServiceNowTableRecordId`, `MsTeamsChannelMsgID` and others). They belong to agent approvals and to integration objects; reusing them for SaaS access requests is the lab's reading. `EnableSSO`, `SSOUrl`, `TokenOwner`, `Error`, `ParentTeamId` and `NotificationSetting` exist in the schema and are not modelled.
+- **Everything about requests, grants, receipts, policies, drift findings and the audit trail.** The request and grant shapes, the grant statuses, the four approver roles, the 1 to 3 level chain, the auto-approval rule, the 7 day cap, the approval window, the highest-level and restore-to-what-it-was rules for reference counting, the reaper's 5 lab minute wake-up, the 02:00 nightly reconcile, the four finding kinds and the remediation.
+- **The receipt hash chain.** Each receipt hashes its own id, kind, time, grant and body together with the hash of the one before, and a commitment (count and head hash) is kept beside the receipts and shown on the Timeline. Editing any field, reordering, or dropping the newest receipts is detected (verified from the receipts, not stored). Without a key or an anchor held somewhere else, anyone who can rewrite both the receipts and the commitment can forge the whole chain: write the head down if it matters. The product's receipt format is not public.
 - **The platform call shapes** (a GitHub collaborator PUT, a Snowflake GRANT, a Unity Catalog PATCH and so on) on `.example` hosts. Illustrations of typical public API shapes; never sent. Authentication shows the method name only.
 - **The roster, the verticals, the lab clock and who may ask** (the subject, or the subject's manager or an agent's custodian).
 
 ### Known limits of the model
 
 - The deck lists team-to-repository (GitHub) and profiles (Salesforce); the lab does not model them (the first has a team as its subject, the second is single-valued and needs a swap-and-restore). GitHub Enterprise Server and self-managed GitLab are named, not modelled separately.
-- A request is for at least 1 minute and at most the policy maximum (itself at most 10080 minutes, 7 days). A reason is at most 300 characters and a comment 200; credential-shaped text is masked. A workspace keeps at most 200 requests, 200 grants, 500 audit entries, 300 outbox entries and 400 platform entries: a full workspace refuses new work (Reset) instead of dropping anything. The clock moves forward only, at most 7 days per move. One answer shows at most 40 hops.
+- A request is for at least 1 minute and at most the policy maximum (itself at most 10080 minutes, 7 days). A reason is at most 300 characters and a comment 200; credential-shaped values are masked (a lab-written heuristic: it catches the common token, key and password shapes, "my password is ..." style text, URL passwords and long key-like runs, but not every secret has a recognisable shape, so do not type a real one). A workspace keeps at most 200 requests, 200 grants, 500 audit entries, 300 outbox entries and 400 platform entries: a full workspace refuses new work (Reset) instead of dropping anything. The clock moves forward only, at most 7 days per move. One answer shows at most 40 hops.
 - The reaper wakes every 5 lab minutes and at the end of every move, so a removal inside a long move is stamped at the next wake-up (the lag is shown). The nightly reconcile runs once per night the clock crosses 02:00. Findings change only when a reconcile runs; the live diff does not wait.
 - A grant starts when the last level approves. A policy edit applies to new requests only; a waiting request keeps the chain it was created with.
-- A chain that asks the same person at two levels under "a different person at every level" is created and later expires; the lab does not detect that deadlock up front.
+- A request whose levels cannot all be filled is refused up front, in the form and by the API: each level needs enough eligible approvers (never the requester, the subject or an agent), and under "a different person at every level" the levels must be able to pick people without sharing. A request that fits is created; if nobody acts it expires with its approval window.
+- An edit to a policy applies to new requests. A request already waiting keeps its approval chain and its chat channel, but its level and window are checked against the live policy again when the last level approves: if the policy was narrowed in the meantime, that last approval is refused (`policy_no_longer_allows`) and the request stays pending.
+- Access changed by hand over a live grant is judged against the grant: more is `elevated`, less is `reduced`, none is `missing`, and the reaper never removes an entry that was made by hand.
+- A chat approval needs the Approve and Deny message that was sent to that approver for that level; the lab keeps that on the request, so the outbox (capped at 300 entries) rolling over does not take it away.
+- State is per `X-Workspace` id, 500 workspaces and one hour of age at most, oldest evicted first. The lab is loopback only, but anything that can reach it can spray ids and evict another visitor's lab: a visitor's id is chosen by the page, not authenticated. An id that looks like a credential is refused, never echoed.
 - Self-approval is never a setting. The lab has no sign-in: you choose who acts, so you can try the wrong person.
 
 ## Run from a clone
@@ -93,7 +97,7 @@ npm run doctor   # 20 checks, including one real request-approve-expire cycle th
 npm run reset    # clears the default workspace (requests, grants, receipts, platform state, outbox, audit trail, clock, edited policies); the UI Reset also restores the diagram
 ```
 
-`GET /api/health` returns `demo-health/1`. The workspace id comes in `X-Workspace`; every hop carries a W3C `traceparent`, and every write answers with the raw hops, including the simulated platform calls and notifications. Presenter mode: press `P` (Esc leaves); the simulation banner stays. `npm run mock-table`, `npm run talk-track` and `npm run content-pack` regenerate the generated files. See `docs/safety.md`.
+`GET /api/health` returns `demo-health/1`. **Refusals as data (the page's contract).** Every write answers with the whole fresh state and the raw hops. A refusal by the engine (self-approval, an expired request, a bad duration) is HTTP 403, 404, 409 or 400 with `ok: false` and an error code; the page sends `refusalsAs200: true`, which turns only those engine refusals into HTTP 200 with `ok: false`, so a browser does not log a deliberate refusal as a failed request. The page treats a write as a success only when the body says `ok: true`. The flag changes nothing else: the Host check, same-origin writes, an unknown mode, an unknown field, a malformed body and every Mock write (409) stay real 4xx errors, and a cross-origin page cannot use it. The workspace id comes in `X-Workspace`; every hop carries a W3C `traceparent`, and every write answers with the raw hops, including the simulated platform calls and notifications. Presenter mode: press `P` (Esc leaves); the simulation banner stays. `npm run mock-table`, `npm run talk-track` and `npm run content-pack` regenerate the generated files. See `docs/safety.md`.
 
 ## Docker (optional)
 
@@ -111,7 +115,7 @@ npm test    # server (node --test), web (vitest, drives the UI against the real 
 
 The shared checks are run by hand, because the scripts are not shipped into this repo's CI: `bash <AI-DEMO-Standalone>/scripts/check-drift.sh .`, `bash <AI-DEMO-Standalone>/scripts/check-css.sh .` and `node <demo-kit-base>/scripts/conformance.mjs . --new`. Conformance reports two rule-18 FAILs on purpose: the deferred SE k8s manifests, and a heuristic that greps for `process.env.MODE` (this lab reads `SAL_LAB_MODE` instead, because the shared settings file is read by every app).
 
-On Node 26: 234 tests pass (179 server, 32 web, 23 scripts).
+On Node 26: 261 tests pass (201 server, 37 web, 23 scripts).
 
 ## Troubleshooting
 
@@ -130,4 +134,4 @@ On Node 26: 234 tests pass (179 server, 32 web, 23 scripts).
 
 ## Not done
 
-No SE k8s build (deferred by the owner, 2026-10-31). No catalog id yet. Every product claim stays UNVERIFIED until it is measured on a tenant that has the release. Team-to-repository and Salesforce profiles are not modelled; the six platforms are in-process models, not the real products.
+No SE k8s build (deferred by the owner, 2026-10-31). Catalog id D104 (assigned 2026-10-31, owner delegated the choice; not yet recorded in the standalone plan). Every product claim stays UNVERIFIED until it is measured on a tenant that has the release. Team-to-repository and Salesforce profiles are not modelled; the six platforms are in-process models, not the real products.

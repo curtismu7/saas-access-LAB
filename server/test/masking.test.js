@@ -3,22 +3,7 @@ import assert from 'node:assert/strict';
 import { DETECTORS, MAX_FREE, cleanFree, findCredentials, maskText } from '../src/credentials.js';
 import { maskDeep } from '../src/mask.js';
 import { C, newEngine, spec, dec } from './helpers.js';
-
-// Credential-shaped test values are assembled at run time, so no such string sits in the repository.
-export const SECRETS = {
-  github: ['gh', 'p_', 'a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8'].join(''),
-  githubPat: ['github', '_pat_', '11ABCDEFG0abcdefghijkl_mnopqrstuvwxyz0123456789ABCDEFGHIJ'].join(''),
-  gitlab: ['glpat', '-', 'AbCdEfGhIjKlMnOpQrSt'].join(''),
-  slack: ['xox', 'b-', '123456789012-abcdefghijklmnopqrstuvwx'].join(''),
-  aws: ['AKI', 'AIOSFODNN7EXAMPLE'].join(''),
-  openai: ['sk', '-proj-', 'Zy9Xw8Vv7Uu6Tt5Ss4Rr3Qq2Pp1'].join(''),
-  jwt: ['eyJhbGciOiJIUzI1NiJ9', 'eyJzdWIiOiJhYmNkZWYifQ', 'abcdefghij1234567890XYZ'].join('.'),
-  pem: ['-----BEGIN ', 'PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASC\nabcdefghijklmnop\n-----END ', 'PRIVATE KEY-----'].join(''),
-  bearer: ['Bear', 'er ', 'abcdEFGH1234567890.tokenvalue'].join(''),
-  assignment: ['pass', 'word=', 'hunter2hunter2'].join(''),
-  blob: 'QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU2Nzg5',
-  hex: 'deadbeef'.repeat(6),
-};
+import { SECRETS, PLAIN } from './secrets.js';
 
 test('every credential shape is found and masked', () => {
   for (const [name, v] of Object.entries(SECRETS)) {
@@ -33,7 +18,7 @@ test('every credential shape is found and masked', () => {
 test('cleanFree: masks, strips control and bidi characters, collapses space, caps, and never throws', () => {
   const v = SECRETS.github;
   assert.ok(!cleanFree(`token ${v}`).includes(v));
-  assert.equal(cleanFree('a\u0000b‮c  d'), 'a b c d');
+  assert.equal(cleanFree('a\u0000b\u202ec  d'), 'a bc d', 'a control character becomes a space, a bidi character is deleted');
   assert.equal(cleanFree('x'.repeat(5000)).length <= MAX_FREE, true);
   assert.equal(cleanFree(undefined), ''); assert.equal(cleanFree(null), ''); assert.equal(cleanFree({}), '[object Object]');
   assert.equal(cleanFree('I need read access to review the change for the release'), 'I need read access to review the change for the release', 'ordinary text is left alone');
@@ -75,4 +60,61 @@ test('a credential typed as the reason of a request is masked everywhere the eng
     assert.ok(!all.includes(needle), `${name} is nowhere in the state, the hops or the receipts`);
   }
   assert.match(e.snapshot().requests.at(-1).reason, /\[masked:/);
+});
+
+// The needles: the part of each value that must not survive. For a keyword form it is the value after the keyword.
+const CORE = { plainIs: 'hunter2xyz', pwColon: 'Hunter2Secret', passEq: 'Tr0ub4dor', passphrase: 'correct horse battery', userinfo: 'hunter2@', tokenWord: ['abcdef123456', '7890zz'].join(''), google: ['a0AfH6SMBxQ1w2e3', 'r4t5y6u7i8o9p0'].join(''), accountKey: ['abcdEFGH', '1234'].join(''), sessionId: '00D5g000008dkQz', key31: ['Zq9Xk2Lm8Rt4Vb7N', 'c1Hd5Fj3Gs6Pw0Y'].join(''), shortGh: 'shortone1234' };
+
+test('plain-language and short credentials are masked (a review found these raw): "my password is ...", pw:, pass=, a passphrase, URL userinfo, "token <word>", Google tokens, AccountKey, session ids, a 31 character key, a short prefixed token', () => {
+  for (const [name, needle] of Object.entries(CORE)) {
+    const v = SECRETS[name];
+    const out = cleanFree(`before ${v} after`);
+    assert.ok(!out.includes(needle), `${name}: "${needle}" survived in "${out}"`);
+    assert.match(out, /\[masked:/, name);
+    assert.ok(out.startsWith('before') , name);
+  }
+});
+
+test('ordinary prose, ids, dates, resource and policy names are NOT masked (no false positives)', () => {
+  for (const text of PLAIN) assert.equal(cleanFree(text), text);
+  for (const id of ['req-0001', 'g-0001', 'gh-repo-core', 'snow-role-writer', 'maya.chen', 'ledger-reconciler', 'pol-code-write', 'dbx-schema-pii', '2026-11-02T10:00:00.000Z']) assert.equal(cleanFree(id), id, id);
+});
+
+test('masking happens BEFORE the cut to length: a token that straddles the limit is masked, not half shown', () => {
+  const v = SECRETS.github;
+  // the cut falls 1 to 8 characters into the token. With cut-then-mask the visible fragment ("ghp_", "ghp_Zq9"...) is too short to be recognised and survives.
+  for (let into = 1; into <= 8; into++) {
+    const filler = 'x '.repeat(200).slice(0, 400 - into); // exactly 400 - into characters, then the token starts
+    const out = cleanFree(`${filler}${v}`, 400);
+    assert.ok(out.length <= 400, `into ${into}`);
+    for (let k = 2; k <= into; k++) assert.ok(!out.endsWith(v.slice(0, k)), `into ${into}: the output must not end with the fragment ${v.slice(0, k)}`);
+    assert.ok(!out.includes('ghp_'), `into ${into}`);
+  }
+  assert.ok(!cleanFree(`${'a'.repeat(19990)} ${v}`, 400).includes('ghp_'));
+});
+
+test('zero-width and soft-hyphen characters interleaved through a token cannot hide it: they are deleted before masking', () => {
+  const v = SECRETS.github;
+  for (const z of ['\u200b', '\u200d', '\u2060', '\ufeff', '\u00ad', '\u202e']) {
+    const out = cleanFree(`use ${[...v].join(z)} now`);
+    assert.ok(!out.includes(v.slice(4, 14)), JSON.stringify(z));
+    assert.match(out, /\[masked:github-token\]/);
+  }
+  assert.equal(cleanFree('a\u200bb'), 'ab');
+});
+
+test('the response mask also catches the new shapes (a value that reaches a response by any path)', () => {
+  for (const name of ['userinfo', 'tokenWord', 'google', 'accountKey', 'sessionId', 'plainIs', 'passEq', 'shortGh']) {
+    const out = JSON.stringify(maskDeep({ x: `see ${SECRETS[name]} please` }));
+    assert.ok(!out.includes(CORE[name]), name);
+  }
+  assert.deepEqual(maskDeep({ a: PLAIN }), { a: PLAIN });
+});
+
+test('a PGP private key block and fullwidth look-alikes of a token are masked too', () => {
+  const pgp = ['-----BEGIN PGP ', 'PRIVATE KEY BLOCK-----\nlQOYBF9abc123xyz\n-----END PGP ', 'PRIVATE KEY BLOCK-----'].join('');
+  assert.ok(!cleanFree(`k ${pgp}`).includes('lQOYBF9abc123xyz'));
+  const full = SECRETS.github.replace(/[a-z_]/g, (c) => (c === '_' ? '＿' : String.fromCharCode(c.charCodeAt(0) + 0xfee0)));
+  assert.ok(!cleanFree(`k ${full}`).includes('Zq9') && !cleanFree(`k ${full}`).includes('ｇｈｐ') || cleanFree(`k ${full}`).includes('[masked:'));
+  assert.match(cleanFree(`k ${full}`), /\[masked:/);
 });

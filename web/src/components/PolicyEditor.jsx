@@ -16,7 +16,7 @@ export default function PolicyEditor({ policy, levels, roles, readOnly, busy, on
   return (
     <details className="panel" data-testid="policy-editor">
       <summary>Edit the policy: {policy.name} <SourceTag source="invented" /></summary>
-      <p className="muted">{readOnly ? "Mock is read-only: switch to Live to edit." : "Applies to new requests; a request already waiting keeps the chain it was created with. Self-approval is not a setting: it is always refused."}</p>
+      <p className="muted">{readOnly ? "Mock is read-only: switch to Live to edit." : "An edit applies to new requests. A request already waiting keeps its approval chain and its chat channel, but its level and window are checked against the policy again when the last level approves: if the policy was narrowed in the meantime, that last approval is refused. Self-approval is not a setting: it is always refused."}</p>
       <div className="filters">
         <label>Highest level it may grant
           <select value={draft.maxLevel} disabled={off} onChange={(e) => set("maxLevel", e.target.value)} data-testid="pe-maxlevel">{levels.map((l) => <option key={l}>{l}</option>)}</select>

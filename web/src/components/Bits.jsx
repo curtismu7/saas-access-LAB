@@ -20,7 +20,7 @@ export function SourceTag({ source }) {
 
 // status words with a state, so meaning never rests on colour alone
 const GOOD = new Set(["granted", "active", "match", "approved"]);
-const BAD = new Set(["denied", "revoked", "unrecorded", "elevated", "missing", "cancelled"]);
+const BAD = new Set(["denied", "revoked", "unrecorded", "elevated", "missing", "reduced", "cancelled"]);
 export const StatusTag = ({ status }) => <span className="tag" data-state={GOOD.has(status) ? "ok" : BAD.has(status) ? "bad" : "warn"} data-testid="status">{status}</span>;
 
 export function Hops({ hops, traceId, truncated }) {

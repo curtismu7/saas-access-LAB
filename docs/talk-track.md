@@ -53,8 +53,7 @@ This is a simulation of Ping's release claims, which are unverified on our tenan
 
 - Anything about how the real console, a real platform, Slack, Mattermost, Teams, Jira or ServiceNow behaves: nothing here ran against one. The six platforms are the lab's in-process models, and the API calls shown are illustrations of typical public API shapes that are never sent.
 - Team-to-repository on GitHub and profiles on Salesforce: the deck lists them; the lab does not model them (the first has a team as its subject, the second is single-valued and needs a swap-and-restore).
-- Authentication: the lab holds no credential for any platform. It names each platform's auth method (as the deck lists it) and nothing more; a token, key or password typed into a field is masked and never kept.
+- Authentication: the lab holds no credential for any platform. It names each platform's auth method (as the deck lists it) and nothing more; credential-shaped values typed into a field are masked and never kept (a heuristic: not every secret has a recognisable shape, so do not type a real one).
 - GitHub Enterprise Server and self-managed GitLab: named by the deck, not modelled separately.
 - The product's real reaper schedule, its nightly reconcile time, its receipt format and its approval-window rules: the lab's are lab-invented and labelled so.
 - Profile-level SSO and sync behaviour (EnableSSO, SSOUrl, TokenOwner, Error and the team fields ParentTeamId and NotificationSetting exist in the schema; the lab does not model them).
-- A deadlock where a chain asks the same person twice under "distinct approvers": the request is created and later expires.

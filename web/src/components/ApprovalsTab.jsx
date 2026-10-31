@@ -36,7 +36,7 @@ export default function ApprovalsTab({ story, mode, lab }) {
   const decide = async (id, decision, v, c) => {
     setMessage(null);
     const r = await lab.act("POST", `/api/requests/${id}/decision`, { decision: { approver: actor, decision, via: v, ...(c ? { comment: c } : {}) } });
-    setMessage(r.ok ? { ok: true, text: `${id}: ${r.body.result.status}${r.body.result.status === "pending" ? `, now at level ${r.body.result.level}` : ""}.` } : { ok: false, text: `${id}: refused (${r.body?.error}). ${r.body?.detail || ""}` });
+    setMessage(r.ok ? { ok: true, text: `${id}: ${r.body?.result?.status}${r.body?.result?.status === "pending" ? `, now at level ${r.body?.result?.level}` : ""}.` } : { ok: false, text: `${id}: refused (${r.body?.error}). ${r.body?.detail || ""}` });
   };
   const setHitl = (name, key, value) => lab.act("PUT", "/api/integrations", { integrations: { [name]: { [key]: value } } });
   const ig = state.integrations;
@@ -75,8 +75,8 @@ export default function ApprovalsTab({ story, mode, lab }) {
         )}
       </section>
       <section className="panel" data-testid="integrations">
-        <h2 className="panel__title">Where approvers are told <SourceTag source="swagger" /></h2>
-        <p className="muted">Hitl marks an integration as approver-facing (Slack), or as a tracker that gets a ticket for every approval (Jira project, ServiceNow table). Slack and Mattermost carry Approve and Deny buttons; Teams, Jira and ServiceNow only receive notifications and tickets. Mattermost Hitl and Teams enabled are lab-invented switches.</p>
+        <h2 className="panel__title">Where approvers are told <SourceTag source="reading" /></h2>
+        <p className="muted">Hitl (a field name in the console schema, 2026-10-31) marks an integration as approver-facing (Slack), or as a tracker that gets a ticket for every approval (Jira project, ServiceNow table). Slack and Mattermost carry Approve and Deny buttons; Teams, Jira and ServiceNow only receive notifications and tickets. What Hitl does here is the lab's reading. Mattermost Hitl and Teams enabled are lab-invented switches.</p>
         <div className="toggles">
           {[["slack", "Hitl", "Slack: approve in chat"], ["mattermost", "Hitl", "Mattermost: approve in chat"], ["msteams", "enabled", "Teams: notify only"], ["jira", "Hitl", "Jira: ticket"], ["servicenow", "Hitl", "ServiceNow: ticket"]].map(([n, k, label]) => (
             <label className="check" key={n}><input type="checkbox" checked={!!ig[n][k]} disabled={disabled} onChange={(e) => setHitl(n, k, e.target.checked)} data-testid={`ig-${n}`} /> {label}</label>

@@ -6,7 +6,7 @@
   "demo": {
     "id": "saas-access-lab",
     "name": "SaaS Access LAB",
-    "catalog": "D0",
+    "catalog": "D104",
     "baseUrl": "http://localhost:7250",
     "doctor": "/api/health",
     "tags": [
@@ -64,7 +64,7 @@
     {
       "id": "receipt",
       "term": "Receipt",
-      "definition": "Every grant is recorded. The lab chains its receipts (each carries the hash of the one before) so a change to any of them is detectable; the product's receipt format is not public, so the chaining is LAB-INVENTED. Ping release claim, UNVERIFIED on our tenant.",
+      "definition": "Every grant is recorded. The lab chains its receipts (each hashes its own fields and the hash of the one before, and a count and head hash are kept beside them) so editing, reordering or dropping receipts is detected; without a key or an external anchor, someone who can rewrite both can forge the chain. The product's receipt format is not public, so all of this is LAB-INVENTED. Ping release claim, UNVERIFIED on our tenant.",
       "aliases": [
         "grant record"
       ]
@@ -80,7 +80,7 @@
     {
       "id": "drift",
       "term": "Drift detection",
-      "definition": "Every grant is reconciled against the platform nightly to surface access granted outside Privilege. The lab flags three kinds (unrecorded, elevated, missing); the kinds, the 02:00 lab-clock time and the remediation are lab-invented. Ping release claim, UNVERIFIED on our tenant.",
+      "definition": "Every grant is reconciled against the platform nightly to surface access granted outside Privilege. The lab flags four kinds (unrecorded, elevated, missing, reduced); the kinds, the 02:00 lab-clock time and the remediation are lab-invented. Ping release claim, UNVERIFIED on our tenant.",
       "aliases": [
         "nightly reconcile",
         "out-of-band access"

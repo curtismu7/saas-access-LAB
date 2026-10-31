@@ -87,7 +87,7 @@ export default function RequestTab({ story, mode, vertical, lab, scenarioId, set
   const submit = async () => {
     setMessage(null);
     const r = await lab.act("POST", "/api/requests", { request: body });
-    setMessage(r.ok ? { ok: true, text: `Request ${r.body.result.requestId} is ${r.body.result.status}${r.body.result.grantId ? ` (grant ${r.body.result.grantId})` : ""}.` } : { ok: false, text: r.body?.detail || r.body?.error || "refused" });
+    setMessage(r.ok ? { ok: true, text: `Request ${r.body?.result?.requestId} is ${r.body?.result?.status}${r.body?.result?.grantId ? ` (grant ${r.body.result.grantId})` : ""}.` } : { ok: false, text: r.body?.detail || r.body?.error || "refused" });
   };
   const savePolicy = async (draft) => {
     set({ policyId: policy.id }); // keep editing this policy: a saved edit must not make the picker jump to another one
@@ -136,7 +136,7 @@ export default function RequestTab({ story, mode, vertical, lab, scenarioId, set
               <select value={policy?.id || ""} onChange={(e) => set({ policyId: e.target.value })} data-testid="policy">{policies.length ? policies.map((p) => <option key={p.id} value={p.id}>{p.name}</option>) : <option value="">no policy covers this</option>}</select>
             </label>
           </div>
-          <label>Reason (credential-shaped text is masked and never kept)
+          <label>Reason (credential-shaped values are masked; a heuristic, not every secret has a recognisable shape)
             <textarea rows={2} maxLength={300} value={f.reason} onChange={(e) => set({ reason: e.target.value })} data-testid="reason" />
           </label>
           <div className="seg">

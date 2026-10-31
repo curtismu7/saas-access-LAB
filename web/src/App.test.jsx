@@ -14,6 +14,8 @@ import { forgetWorkspace } from "./workspace";
 const C = VERTICALS.finance;
 let server; let base; const realFetch = globalThis.fetch; let seen = [];
 let delay = () => 0;
+let override = () => null; // a test may answer a request itself
+let pending = 0;            // requests that have started and not yet answered
 beforeAll(async () => {
   const health = createHealth({ runChecks: async () => [], intervalMs: 3_600_000 });
   ({ server, url: base } = await startHttpServer({ port: 0, host: "127.0.0.1", app: createApp({ health, configFile: "/nonexistent/customer.config.json" }) }));
@@ -21,12 +23,18 @@ beforeAll(async () => {
   globalThis.fetch = async (u, init = {}) => {
     const url = typeof u === "string" && u.startsWith("/") ? `${base}${u}` : u;
     seen.push({ url: String(url), body: typeof init.body === "string" ? init.body : "" });
-    const ms = delay(String(url), init); if (ms) await new Promise((r) => setTimeout(r, ms));
-    return realFetch(url, { ...init, headers: { origin: base, ...(init.headers || {}) } });
+    pending += 1;
+    try {
+      const own = override(String(url), init); if (own) return own;
+      const ms = delay(String(url), init); if (ms) await new Promise((r) => setTimeout(r, ms));
+      const r = await realFetch(url, { ...init, headers: { origin: base, ...(init.headers || {}) } });
+      await r.clone().text(); // the body has arrived too
+      return r;
+    } finally { pending -= 1; }
   };
 });
 afterAll(async () => { globalThis.fetch = realFetch; await new Promise((r) => server.close(r)); });
-beforeEach(() => { cleanup(); forgetWorkspace(); seen = []; delay = () => 0; try { window.localStorage.clear(); window.sessionStorage.clear(); } catch { /* ignore */ } window.location.hash = ""; });
+beforeEach(() => { cleanup(); forgetWorkspace(); seen = []; delay = () => 0; override = () => null; pending = 0; try { window.localStorage.clear(); window.sessionStorage.clear(); } catch { /* ignore */ } window.location.hash = ""; });
 
 const T = { timeout: 20000 };
 const mount = async () => { render(<App />); await screen.findByTestId("scenarios", {}, T); };
@@ -49,6 +57,8 @@ const approveAs = async (who, testId = "approve") => {
   await click(testId);
   await waitFor(() => expect(screen.getByTestId("decision-message")).toBeInTheDocument(), T);
 };
+// Wait until every request the page has made has been answered and the page has had a turn to show the answer (no fixed sleep).
+const settled = async () => { await waitFor(() => expect(pending).toBe(0), { timeout: 20000 }); await new Promise((r) => setTimeout(r, 60)); await waitFor(() => expect(pending).toBe(0), { timeout: 20000 }); };
 const wholePageText = () => { const c = document.body.cloneNode(true); c.querySelectorAll("textarea,input").forEach((n) => n.remove()); return c.textContent; };
 
 describe("shell", () => {
@@ -216,7 +226,8 @@ describe("Request tab (Live)", () => {
     await pick("level", "read");           // slow answer, will arrive last
     await pick("level", "triage");         // fast answer for the newer form
     await waitFor(() => expect(screen.getByTestId("preview-chain")).toHaveTextContent(/Needs 2 approval level/), T);
-    await new Promise((r) => setTimeout(r, 1200));
+    expect(seen.some((x) => /preview/.test(x.url) && /"level":"read"/.test(x.body))).toBe(true); // the slow request really was sent
+    await settled();                                  // ...and has now been answered
     expect(screen.getByTestId("preview-chain")).toHaveTextContent(/Needs 2 approval level/);
     expect(screen.queryByTestId("preview-auto")).toHaveTextContent(/Needs 2 approval level/);
   });
@@ -256,7 +267,8 @@ describe("agents, denial and stale answers", () => {
     await click("scenario-overlap");     // slow
     await click("scenario-drift");       // fast, picked later
     await waitFor(() => expect(screen.getByTestId("scenario-steps")).toHaveTextContent(/administrator raises/), T);
-    await new Promise((r) => setTimeout(r, 1300));
+    expect(seen.some((x) => /scenario=overlap/.test(x.url))).toBe(true);
+    await settled();
     expect(screen.getByTestId("scenario-steps")).toHaveTextContent(/administrator raises/);
     expect(screen.getByTestId("scenario-drift")).toHaveAttribute("aria-pressed", "true");
     await tab("Drift");
@@ -270,9 +282,69 @@ describe("agents, denial and stale answers", () => {
     await click("submit-request");
     await click("mode-mock");
     await waitFor(() => expect(screen.getByTestId("banner")).toHaveTextContent(/MOCK mode/));
-    await new Promise((r) => setTimeout(r, 1100));
+    expect(seen.some((x) => /\/api\/requests$/.test(x.url) && x.body.includes('"mode":"live"'))).toBe(true); // the write really was sent
+    await settled();
     expect(screen.queryByTestId("last-action")).toBeNull();
     expect(screen.getByTestId("scenario-steps")).toBeInTheDocument();
+  });
+});
+
+describe("a write is a success only when the body says so (S7)", () => {
+  it("a 200 whose body lacks ok is shown as a refusal, never as a success, and the page does not throw", async () => {
+    await mount(); await live(); await submitDefault();
+    await tab("Approvals"); await screen.findByTestId("inbox", {}, T);
+    override = (url, init) => (/\/decision$/.test(url) && init.method === "POST" ? new Response("{}", { status: 200, headers: { "content-type": "application/json" } }) : null);
+    await waitFor(() => expect(screen.getByTestId("approve")).toBeEnabled(), T);
+    await click("approve");
+    await waitFor(() => expect(screen.getByTestId("decision-message")).toBeInTheDocument(), T);
+    expect(screen.getByTestId("decision-message")).toHaveAttribute("role", "alert");
+    expect(screen.getByTestId("decision-message")).toHaveTextContent(/refused/);
+    expect(screen.getByTestId("decision-message")).not.toHaveTextContent(/pending|granted/);
+    expect(screen.getByTestId("inbox")).toBeInTheDocument();
+  });
+
+  it("a 200 with ok false (a refusal as data) is shown as a refusal with its reason; ok true is the only success", async () => {
+    await mount(); await live(); await submitDefault();
+    await approveAs(C.castEngineer);
+    expect(screen.getByTestId("decision-message")).toHaveAttribute("role", "alert");
+    expect(screen.getByTestId("decision-message")).toHaveTextContent(/self_approval_refused/);
+    expect(seen.some((x) => x.body.includes('"refusalsAs200":true'))).toBe(true);
+    for (const body of ["null", "[]", '{"ok":"true"}', '{"ok":1}', '{"result":{"status":"granted"}}']) {
+      override = (url, init) => (/\/clock$/.test(url) && init.method === "POST" ? new Response(body, { status: 200, headers: { "content-type": "application/json" } }) : null);
+      await tab("Timeline"); await waitFor(() => expect(screen.getByTestId("adv-60")).toBeEnabled(), T);
+      await click("adv-60");
+      await waitFor(() => expect(screen.getByTestId("clock-message")).toHaveAttribute("role", "alert"), T);
+      expect(screen.getByTestId("clock-message")).not.toHaveTextContent(/The clock moved/);
+    }
+  });
+});
+
+describe("explanations the reviewer asked for", () => {
+  it("S4: a request whose levels share their only approver is refused up front in the form, with the reason in words, and cannot be submitted", async () => {
+    await mount(); await live();
+    await pick("subject-kind", "agent");
+    await pick("subject", C.castAgent2);
+    await waitFor(() => expect(screen.getByTestId("preview-error")).toHaveTextContent(/different person at every level/), T);
+    expect(screen.getByTestId("submit-request")).toBeDisabled();
+  });
+
+  it("S5: the policy editor says that a waiting request keeps its chain and channel but is checked against the policy again at the last approval", async () => {
+    await mount(); await live();
+    await userEvent.click(screen.getByText(/Edit the policy/));
+    expect(screen.getByTestId("policy-editor")).toHaveTextContent(/keeps its approval chain and its chat channel/);
+    expect(screen.getByTestId("policy-editor")).toHaveTextContent(/checked against the policy again when the last level approves/);
+  });
+
+  it("S1/S8: the wording does not overclaim masking, and Sync and Hitl are tagged as the lab's reading beside the behaviour", async () => {
+    await mount(); await live(); await tab("Platforms");
+    await waitFor(() => expect(screen.getByTestId("platform-snowflake")).toBeInTheDocument(), T);
+    expect(wholePageText()).toMatch(/not every secret has a recognisable shape/);
+    expect(wholePageText()).not.toMatch(/a token or key typed anywhere is masked/);
+    expect(screen.getByTestId("sync-snowflake").closest("label")).toHaveTextContent(/lab reading/);
+    expect(screen.getByTestId("sync-snowflake").closest("label")).not.toHaveTextContent(/console swagger/);
+    await tab("Approvals");
+    expect(screen.getByTestId("integrations")).toHaveTextContent(/lab reading/);
+    expect(screen.getByTestId("integrations")).not.toHaveTextContent(/console swagger name \(schema only\)/);
   });
 });
 

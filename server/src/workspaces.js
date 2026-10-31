@@ -2,6 +2,7 @@
 // (requests, grants, receipts, the platforms' own state, the audit trail, the outbox and the lab clock). Bounded in count and age.
 // The browser sends its id in X-Workspace (default "default"). Reset clears the current workspace only.
 import { Engine } from './engine.js';
+import { findCredentials } from './credentials.js';
 
 export const WORKSPACE_RE = /^[a-z0-9-]{1,40}$/;
 export const DEFAULT_WORKSPACE = 'default';
@@ -9,7 +10,8 @@ export const DEFAULT_WORKSPACE = 'default';
 export function workspaceFrom(req) {
   const raw = req.headers['x-workspace'];
   if (raw === undefined) return DEFAULT_WORKSPACE;
-  return typeof raw === 'string' && WORKSPACE_RE.test(raw) ? raw : null;
+  // An id that looks like a credential (a 40-hex token, a long mixed run) is refused rather than echoed back in the `workspace` field and the hop headers.
+  return typeof raw === 'string' && WORKSPACE_RE.test(raw) && findCredentials(raw).length === 0 ? raw : null;
 }
 
 export function createWorkspaces({ max = 500, ttlMs = 60 * 60 * 1000, now = Date.now } = {}) {

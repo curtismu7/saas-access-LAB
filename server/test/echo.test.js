@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { C, get, post, put, spec, withServer } from './helpers.js';
-import { SECRETS } from './masking.test.js';
+import { SECRETS } from './secrets.js';
 
 const NEEDLES = Object.fromEntries(Object.entries(SECRETS).map(([k, v]) => [k, { raw: v, probe: k === 'pem' ? 'MIIEvQIBADANBgkqhkiG9w0BAQEFAASC' : k === 'bearer' ? 'tokenvalue' : k === 'assignment' ? 'hunter2hunter2' : v }]));
 const W = (id) => ({ 'x-workspace': id });

@@ -12,7 +12,7 @@ export default function PlatformsTab({ story, mode, lab }) {
     <div className="stack">
       <section className="panel">
         <h2 className="panel__title">Six platforms <ClaimTag /></h2>
-        <p className="muted">What each grants and how Privilege signs in to it is the deck's list (slide 51). The lab shows the auth METHOD NAME only: it holds no credential for any platform, never shows or stores one, and a token or key typed anywhere is masked. The state below is each platform's own, held in this lab.</p>
+        <p className="muted">What each grants and how Privilege signs in to it is the deck's list (slide 51). The lab shows the auth METHOD NAME only: it holds no credential for any platform, never shows or stores one, and credential-shaped values typed anywhere are masked (a heuristic: not every secret has a recognisable shape). The state below is each platform's own, held in this lab.</p>
       </section>
       <div className="cols">
         {story.platforms.map((p) => {
@@ -25,7 +25,7 @@ export default function PlatformsTab({ story, mode, lab }) {
               {p.variants && <p className="muted">{p.variants} (named by the deck; not modelled separately).</p>}
               <p className="muted">Modelled: {p.modelled.join("; ")}.{p.notModelled.length > 0 && ` Not modelled: ${p.notModelled.join("; ")}.`}</p>
               {SYNC.includes(p.id) && (
-                <label className="check"><input type="checkbox" checked={state.sync[p.id]} disabled={off} onChange={(e) => setSync(p.id, e.target.checked)} data-testid={`sync-${p.id}`} /> Sync (the reconcile reads this platform) <SourceTag source="swagger" /></label>
+                <label className="check"><input type="checkbox" checked={state.sync[p.id]} disabled={off} onChange={(e) => setSync(p.id, e.target.checked)} data-testid={`sync-${p.id}`} /> Sync (the reconcile reads this platform) <SourceTag source="reading" /></label>
               )}
               <h4 className="hops__title">The platform's own state: {p.id === "github" ? "collaborators and team members" : p.id === "gitlab" ? "group and project members" : p.id === "salesforce" ? "permission set assignments" : p.id === "snowflake" ? "role members" : p.id === "databricks" ? "privilege holders" : "admin role assignees"}</h4>
               <div className="scroll"><table className="tbl">

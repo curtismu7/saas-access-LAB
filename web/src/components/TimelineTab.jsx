@@ -19,9 +19,9 @@ export default function TimelineTab({ story, mode, lab }) {
   const move = async (body) => {
     setMessage(null);
     const r = await lab.act("POST", "/api/clock", { clock: body });
-    setMessage(r.ok ? { ok: true, text: `The clock moved. Reaped: ${r.body.result.reaped.length} grant(s); requests expired: ${r.body.result.requestsExpired.length}; nightly reconcile runs: ${r.body.result.nightly}.` } : { ok: false, text: `Refused (${r.body?.error}). ${r.body?.detail || ""}` });
+    setMessage(r.ok ? { ok: true, text: `The clock moved. Reaped: ${(r.body?.result?.reaped?.length ?? 0)} grant(s); requests expired: ${(r.body?.result?.requestsExpired?.length ?? 0)}; nightly reconcile runs: ${(r.body?.result?.nightly ?? 0)}.` } : { ok: false, text: `Refused (${r.body?.error}). ${r.body?.detail || ""}` });
   };
-  const reap = async () => { setMessage(null); const r = await lab.act("POST", "/api/reaper/run", {}); setMessage(r.ok ? { ok: true, text: `Reaper pass: ${r.body.result.reaped.length} grant(s) removed, ${r.body.result.requestsExpired.length} request(s) expired.` } : { ok: false, text: r.body?.detail || r.body?.error }); };
+  const reap = async () => { setMessage(null); const r = await lab.act("POST", "/api/reaper/run", {}); setMessage(r.ok ? { ok: true, text: `Reaper pass: ${(r.body?.result?.reaped?.length ?? 0)} grant(s) removed, ${(r.body?.result?.requestsExpired?.length ?? 0)} request(s) expired.` } : { ok: false, text: r.body?.detail || r.body?.error }); };
   const rows = state.audit.filter(FILTERS[filter]).slice(0, 80);
   const v = state.receipts.verify;
   return (

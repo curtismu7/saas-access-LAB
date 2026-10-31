@@ -8,6 +8,7 @@ const MEANING = {
   unrecorded: "access on the platform with no live grant behind it: granted outside Privilege",
   elevated: "more access on the platform than the receipts justify",
   missing: "a live grant, but the platform no longer has the access",
+  reduced: "the platform holds less than the live grant justifies (changed by hand)",
 };
 
 export default function DriftTab({ story, mode, lab }) {

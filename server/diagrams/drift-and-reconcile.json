@@ -113,7 +113,7 @@
     },
     {
       "title": "Flag the difference",
-      "what": "Access with no receipt is unrecorded, more access than the receipts justify is elevated, a receipt with no access is missing.",
+      "what": "Access with no receipt is unrecorded, more access than the receipts justify is elevated, a live receipt with no access is missing, and less access than a live receipt justifies is reduced.",
       "edges": [
         3
       ]

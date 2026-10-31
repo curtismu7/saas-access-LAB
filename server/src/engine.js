@@ -54,7 +54,7 @@ export class Engine {
     return {
       clock: CLOCK_START, seq: { req: 0, grant: 0, receipt: 0, msg: 0, ticket: 0, audit: 0, finding: 0, run: 0 },
       policies: Object.fromEntries(defaultPolicies().map((p) => [p.id, p])), integrations: defaultIntegrations(),
-      requests: [], grants: [], audit: [], outbox: [], receipts: [], platformLog: [], entries: [], sync: { ...SYNC_DEFAULT },
+      requests: [], grants: [], audit: [], outbox: [], receipts: [], commit: { count: 0, head: '0'.repeat(64) }, platformLog: [], entries: [], sync: { ...SYNC_DEFAULT },
       drift: { open: [], runs: [], lastNightly: this.nightlyIndex(CLOCK_START), lastRunAt: null },
     };
   }
@@ -132,6 +132,23 @@ export class Engine {
     return a.enabled && rankOf(spec.resource, spec.level) <= rankOf(spec.resource, a.maxLevel) && spec.durationMin <= a.maxDurationMin;
   }
 
+  // Can the chain ever be completed? Each level needs `required` eligible approvers, and with a different person at every level the levels
+  // must be able to pick people without sharing (a person who is the only candidate at two levels can satisfy only one). Returns null or
+  // { level, role, detail } naming the first level that cannot be completed.
+  stuckLevel(routing, distinct) {
+    const sets = routing.map((r) => r.candidates.filter((c) => c.allowed).map((c) => c.id));
+    for (const r of routing) {
+      if (sets[r.level].length < r.required) return { level: r.level, role: r.role, detail: `nobody can approve level ${r.level + 1} (${r.role}): the people routed to are the requester, the subject or not human` };
+    }
+    if (!distinct) return null;
+    const combos = (arr, k) => (k === 0 ? [[]] : arr.flatMap((x, i) => combos(arr.slice(i + 1), k - 1).map((c) => [x, ...c])));
+    const go = (i, used, upto) => i > upto || combos(sets[i].filter((x) => !used.has(x)), routing[i].required).some((c) => go(i + 1, new Set([...used, ...c]), upto));
+    for (let upto = 0; upto < routing.length; upto++) {
+      if (!go(0, new Set(), upto)) return { level: upto, role: routing[upto].role, detail: `nobody can approve level ${upto + 1} (${routing[upto].role}) with a different person at every level: everyone routed to it is already needed at an earlier level` };
+    }
+    return null;
+  }
+
   // Preview: the same checks and routing as a real request, without creating anything. Returns { ok, errors, routing, autoApprove }.
   preview(input) {
     try {
@@ -139,8 +156,8 @@ export class Engine {
       const chain = spec.policy.chain;
       const routing = this.routing(chain, spec);
       const auto = this.autoApproves(spec.policy, spec);
-      const stuck = auto ? null : routing.find((r) => r.candidates.filter((c) => c.allowed).length < r.required);
-      return { ok: !stuck, error: stuck ? { code: 'no_eligible_approver', detail: `nobody can approve level ${stuck.level + 1} (${stuck.role}): the people routed to are the requester, the subject or not human` } : null, routing, autoApprove: auto, policyId: spec.policy.id, chain, windowMin: spec.policy.requestTtlMin, expiresIfApprovedNow: iso(this.now + spec.durationMin * MIN) };
+      const stuck = auto ? null : this.stuckLevel(routing, spec.policy.requireDistinctApprovers);
+      return { ok: !stuck, error: stuck ? { code: 'no_eligible_approver', detail: stuck.detail } : null, routing, autoApprove: auto, policyId: spec.policy.id, chain, windowMin: spec.policy.requestTtlMin, expiresIfApprovedNow: iso(this.now + spec.durationMin * MIN) };
     } catch (e) { if (!e.code) throw e; return { ok: false, error: { code: e.code, detail: e.message }, routing: [], autoApprove: false }; }
   }
 
@@ -150,11 +167,13 @@ export class Engine {
     const chain = spec.policy.chain.map((c) => ({ ...c }));
     const routing = this.routing(chain, spec);
     const auto = this.autoApproves(spec.policy, spec);
-    const stuck = auto ? null : routing.find((r) => r.candidates.filter((c) => c.allowed).length < r.required);
-    if (stuck) throw refuse('no_eligible_approver', `nobody can approve level ${stuck.level + 1} (${stuck.role}): the people routed to are the requester, the subject or not human`, 409);
+    const stuck = auto ? null : this.stuckLevel(routing, spec.policy.requireDistinctApprovers);
+    if (stuck) throw refuse('no_eligible_approver', stuck.detail, 409);
     const req = {
       id: this.nextId('req', 'req'), status: 'pending', createdAt: iso(this.now), policyId: spec.policy.id, platform: spec.platform, resource: spec.resource, level: spec.level,
       durationMin: spec.durationMin, subject: spec.subject, requestedBy: spec.requestedBy, reason: spec.reason, currentLevel: 0, chain,
+      channel: spec.policy.channel, // frozen with the chain: a later policy edit does not move a waiting request to another chat tool
+      chatActions: [], // { level, to, channel }: who was sent Approve and Deny buttons at which level (kept on the request, so the outbox rolling over cannot lose it)
       approval: {
         RequiredApprovals: chain[0].required, RequireDistinctApprovers: spec.policy.requireDistinctApprovers, Approvers: [], ExpiresAt: iso(this.now + spec.policy.requestTtlMin * MIN),
         NotifiedLevel: 0, ApproverNotifications: [], ApprovedBy: [], ApprovalCount: 0, DistinctApprovers: 0, DeniedBy: null, DenialReason: null, DecidedAt: null, ExpiredAt: null,
@@ -207,7 +226,7 @@ export class Engine {
     const level = this.routing(req.chain, { subject: req.subject, resource: req.resource, requestedBy: req.requestedBy })[req.currentLevel];
     need(level.candidates.some((c) => c.id === i.approver && c.allowed), 'not_an_approver', `not an approver for level ${req.currentLevel + 1} (${level.role}) of this request`, 403);
     need(!NOTIFY_ONLY.includes(via), 'channel_notify_only', `${via} only receives notifications and tickets: approve from the console, Slack or Mattermost`, 400);
-    if (CHAT.includes(via)) need(this.s.outbox.some((m) => m.requestId === req.id && m.to === i.approver && m.channel === via && m.kind === 'approval_request' && m.level === req.currentLevel && m.actions.length), 'no_chat_action', `no ${via} message with Approve and Deny buttons was sent to this approver for this level`, 403);
+    if (CHAT.includes(via)) need(req.chatActions.some((c) => c.to === i.approver && c.channel === via && c.level === req.currentLevel), 'no_chat_action', `no ${via} message with Approve and Deny buttons was sent to this approver for this level`, 403);
     const comment = cleanFree(i.comment, LIMITS.comment);
     if (i.decision === 'deny') {
       req.status = 'denied'; req.approval.DeniedBy = i.approver; req.approval.DenialReason = comment || 'denied'; req.approval.DecidedAt = iso(this.now);
@@ -219,6 +238,12 @@ export class Engine {
     }
     need(!req.approval.ApprovedBy.some((a) => a.id === i.approver && a.level === req.currentLevel), 'already_approved', 'this approver already approved this level', 409);
     need(!(req.approval.RequireDistinctApprovers && req.approval.ApprovedBy.some((a) => a.id === i.approver)), 'distinct_approver_required', 'this policy needs a different person at every level', 403);
+    // The chain and the chat channel were frozen with the request, but the level and the window are checked against the LIVE policy again when the last
+    // level approves: if the policy was narrowed (or retired) in the meantime, that approval is refused and the request stays pending until it expires.
+    if (req.approval.ApprovedBy.filter((a) => a.level === req.currentLevel).length + 1 >= level.required && req.currentLevel + 1 >= req.chain.length) {
+      const live = this.policy(req.policyId);
+      need(live && !live.retired && rankOf(req.resource, req.level) <= rankOf(req.resource, live.maxLevel) && req.durationMin <= live.maxDurationMin, 'policy_no_longer_allows', 'the policy was changed after this request was made and no longer allows this level or window: the last approval is refused', 409);
+    }
     req.approval.ApprovedBy.push({ id: i.approver, via, level: req.currentLevel, at: iso(this.now) });
     req.approval.ApprovalCount += 1; req.approval.DistinctApprovers = new Set(req.approval.ApprovedBy.map((a) => a.id)).size;
     this.audit('approval.recorded', i.approver, { requestId: req.id, level: req.currentLevel + 1, via });
@@ -281,16 +306,25 @@ export class Engine {
     return g;
   }
 
+  // A receipt hashes its own id, kind, time and grant as well as its body, chained to the one before. A commitment (count and head hash) is kept
+  // beside the receipts and shown on the Timeline; verification checks the chain AND the commitment, so editing any field, reordering, or dropping
+  // the newest receipts is detected. Without a key or an anchor held somewhere else, anyone who can rewrite both the receipts and the commitment
+  // can forge the whole chain: the lab says so plainly.
+  receiptHash(prev, r) { return sha(`${prev}|${JSON.stringify({ id: r.id, kind: r.kind, at: r.at, grantId: r.grantId, body: r.body })}`); }
   addReceipt(kind, g) {
     const prev = this.s.receipts.length ? this.s.receipts[this.s.receipts.length - 1].hash : '0'.repeat(64);
     const body = { kind, grantId: g.id, requestId: g.requestId, policyId: g.policyId, platform: g.platform, resource: g.resource, level: g.level, subject: g.subject, approvedBy: g.approvedBy.map((a) => a.id), grantedAt: g.grantedAt, expiresAt: g.expiresAt, refCount: this.liveGrants(g.platform, g.resource, g.subject).length, at: iso(this.now), removalReason: g.removalReason };
-    const r = { id: this.nextId('receipt', 'r'), kind, at: body.at, grantId: g.id, body, prevHash: prev, hash: sha(`${prev}|${JSON.stringify(body)}`) };
+    const r = { id: this.nextId('receipt', 'r'), kind, at: body.at, grantId: g.id, body, prevHash: prev };
+    r.hash = this.receiptHash(prev, r);
     this.s.receipts.push(r);
+    this.s.commit = { count: this.s.receipts.length, head: r.hash };
     return r.id;
   }
   verifyReceipts() {
     let prev = '0'.repeat(64);
-    for (const r of this.s.receipts) { if (r.prevHash !== prev || r.hash !== sha(`${prev}|${JSON.stringify(r.body)}`)) return { ok: false, at: r.id }; prev = r.hash; }
+    for (const r of this.s.receipts) { if (r.prevHash !== prev || r.hash !== this.receiptHash(prev, r)) return { ok: false, at: r.id }; prev = r.hash; }
+    const c = this.s.commit;
+    if (c.count !== this.s.receipts.length || c.head !== prev) return { ok: false, at: 'commitment', detail: 'the receipts and the count and head held beside them disagree: receipts were dropped or added' };
     return { ok: true, count: this.s.receipts.length, head: prev };
   }
 
@@ -308,6 +342,7 @@ export class Engine {
     const log = (op, level, actor = 'privilege') => { this.s.platformLog.push({ at: iso(this.now), platform, actor, op, resource, subject, level }); if (this.s.platformLog.length > LIMITS.platformLog) this.s.platformLog.shift(); };
     if (expected === null) {
       if (!e) return;
+      if (e.origin === 'out-of-band') return; // made by hand: the reaper never created it, so it never removes it
       if (e.prior) { const was = e.level; e.level = e.prior; e.origin = 'out-of-band'; e.prior = null; if (was !== e.level) { call('update', e.level, was); log('set', e.level); } return; }
       call('revoke', e.level); log('remove', e.level);
       this.s.entries.splice(this.s.entries.indexOf(e), 1);
@@ -347,6 +382,8 @@ export class Engine {
     if (i.to !== undefined) {
       if (typeof i.to !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{3})?)?Z$/.test(i.to) || Number.isNaN(Date.parse(i.to))) throw refuse('bad_time', 'to must be an ISO time ending in Z');
       target = Date.parse(i.to);
+      const norm = new Date(target).toISOString(); // an impossible calendar date (February 31) would be normalised to March: refuse it
+      if (norm.slice(0, 16) !== i.to.slice(0, 16) || (i.to.length >= 19 && norm.slice(17, 19) !== i.to.slice(17, 19))) throw refuse('bad_time', 'to must be a real calendar time');
     } else {
       if (typeof i.minutes !== 'number' || !Number.isInteger(i.minutes)) throw refuse('bad_minutes', 'minutes must be a whole number');
       target = this.now + i.minutes * MIN;
@@ -409,7 +446,7 @@ export class Engine {
       const subj = { kind: e.subjectKind, id: e.subjectId };
       const live = this.liveGrants(e.platform, e.resource, subj); const expected = this.maxLevel(e.resource, live);
       seen.add(`${e.platform}|${e.resource}|${e.subjectKind}:${e.subjectId}`);
-      const kind = expected === null ? 'unrecorded' : rankOf(e.resource, e.level) > rankOf(e.resource, expected) ? 'elevated' : null;
+      const kind = expected === null ? 'unrecorded' : rankOf(e.resource, e.level) > rankOf(e.resource, expected) ? 'elevated' : rankOf(e.resource, e.level) < rankOf(e.resource, expected) ? 'reduced' : null;
       rows.push({ kind: kind || 'match', platform: e.platform, resource: e.resource, subject: subj, onPlatform: e.level, expected, grants: live.map((g) => g.id), origin: e.origin });
     }
     for (const g of this.s.grants.filter((x) => x.status === 'active' && synced(x.platform))) {
@@ -444,7 +481,7 @@ export class Engine {
     const i = input && typeof input === 'object' ? input : {};
     const f = isStr(i.findingId, 20) ? this.s.drift.open.find((x) => x.id === i.findingId) : null;
     if (!f) throw refuse('not_found', 'no such finding', 404);
-    if (f.kind === 'missing') throw refuse('nothing_to_revoke', 'the platform already lacks this access: there is nothing to remove', 409);
+    if (f.kind === 'missing' || f.kind === 'reduced') throw refuse('nothing_to_revoke', 'the platform already holds less than the receipts justify: there is nothing to remove', 409);
     const e = this.entry(f.platform, f.resource, f.subject);
     if (!e) throw refuse('nothing_to_revoke', 'the platform no longer has this entry', 409);
     const rn = this.resourceName(f.resource); const kind = RESOURCES[f.resource].kind;
@@ -521,12 +558,13 @@ export class Engine {
   }
   describe(req) { return `${req.subject.kind} ${req.subject.id} asks for ${req.level} on ${this.resourceName(req.resource)} (${PLATFORMS[req.platform].name}) for ${req.durationMin} min. Reason: ${req.reason || 'none given'}`; }
   notify(req, why) {
-    const pol = this.s.policies[req.policyId]; const ig = this.s.integrations; const a = req.approval;
+    const ig = this.s.integrations; const a = req.approval; const ch = req.channel;
     const lvl = req.currentLevel;
-    if (ig[pol.channel]?.Hitl) {
+    if (ig[ch]?.Hitl) {
       for (const id of a.Approvers) {
-        const m = this.push({ channel: pol.channel, to: id, kind: 'approval_request', requestId: req.id, level: lvl, actions: ['approve', 'deny'], text: `Approve or deny, level ${lvl + 1} (${req.chain[lvl].role}): ${this.describe(req)}` });
-        a.ApproverNotifications.push({ ApproverUserID: id, IntegrationType: pol.channel, ChannelID: `dm-${id}`, MessageID: m.id, WorkspaceID: ig[pol.channel].WorkspaceID || 'lab-workspace' });
+        req.chatActions.push({ level: lvl, to: id, channel: ch });
+        const m = this.push({ channel: ch, to: id, kind: 'approval_request', requestId: req.id, level: lvl, actions: ['approve', 'deny'], text: `Approve or deny, level ${lvl + 1} (${req.chain[lvl].role}): ${this.describe(req)}` });
+        a.ApproverNotifications.push({ ApproverUserID: id, IntegrationType: ch, ChannelID: `dm-${id}`, MessageID: m.id, WorkspaceID: ig[ch].WorkspaceID || 'lab-workspace' });
       }
     }
     if (why !== 'created') return;
@@ -540,13 +578,13 @@ export class Engine {
     const a = req.approval;
     if (a.RetiredAt) return false;
     a.RetiredAt = iso(this.now);
+    req.chatActions = [];
     for (const m of this.s.outbox) if (m.requestId === req.id && m.kind === 'approval_request' && m.actions.length) { m.actions = []; m.pulled = true; }
     const ig = this.s.integrations; const outcome = `Request ${req.id} is ${req.status}.`;
     if (ig.msteams.enabled) this.push({ channel: 'msteams', to: 'channel: access-requests', kind: 'outcome', requestId: req.id, level: req.currentLevel, actions: [], text: outcome });
     if (a.JiraTicketID) this.push({ channel: 'jira', to: a.JiraTicketID, kind: 'ticket-update', requestId: req.id, level: req.currentLevel, actions: [], text: `${outcome} Ticket transitioned and commented.` });
     if (a.ServiceNowTableRecordId) this.push({ channel: 'servicenow', to: a.ServiceNowTableRecordId, kind: 'ticket-update', requestId: req.id, level: req.currentLevel, actions: [], text: `${outcome} Task closed.` });
-    const pol = this.s.policies[req.policyId];
-    if (ig[pol.channel]?.Hitl) this.push({ channel: pol.channel, to: req.requestedBy, kind: 'outcome', requestId: req.id, level: req.currentLevel, actions: [], text: outcome });
+    if (ig[req.channel]?.Hitl) this.push({ channel: req.channel, to: req.requestedBy, kind: 'outcome', requestId: req.id, level: req.currentLevel, actions: [], text: outcome });
     return true;
   }
   // Test and doctor hook: a terminal event delivered a second time.
@@ -574,7 +612,7 @@ export class Engine {
       roster: [...this.people.values()], policies: Object.values(s.policies), integrations: s.integrations, sync: { ...s.sync },
       requests: s.requests.map((r) => ({ ...r, resourceName: this.resourceName(r.resource), routing: r.status === 'pending' ? this.routing(r.chain, { subject: r.subject, resource: r.resource, requestedBy: r.requestedBy })[r.currentLevel] : null })),
       grants: s.grants.map((g) => ({ ...g, resourceName: this.resourceName(g.resource), refCount: g.status === 'active' ? this.liveGrants(g.platform, g.resource, g.subject).length : null })),
-      holdings: this.holdings(), receipts: { verify: this.verifyReceipts(), items: s.receipts.slice(-60).map((r) => ({ id: r.id, kind: r.kind, at: r.at, grantId: r.grantId, hash: r.hash, prevHash: r.prevHash })) },
+      holdings: this.holdings(), receipts: { verify: this.verifyReceipts(), commitment: { ...s.commit }, items: s.receipts.slice(-60).map((r) => ({ id: r.id, kind: r.kind, at: r.at, grantId: r.grantId, hash: r.hash, prevHash: r.prevHash })) },
       platforms: this.platformView(), diff: this.diff(), drift: { open: s.drift.open, runs: s.drift.runs, lastRunAt: s.drift.lastRunAt },
       audit: [...s.audit].reverse(), outbox: [...s.outbox].reverse(),
       resourceNames: Object.fromEntries(RESOURCE_IDS.map((r) => [r, this.resourceName(r)])),

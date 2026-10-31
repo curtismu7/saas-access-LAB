@@ -9,7 +9,8 @@
       "healthPath": "/api/health",
       "composeFile": "saas-access-LAB/docker-compose.yml",
       "composeOverlays": [],
-      "notes": "Host-run: ./scripts/run.sh (port 7250). Docker: HOST_PORT=7250 docker compose up --build -d (published on 127.0.0.1 only). Mock and Live are both loopback-only with zero outbound calls; the lab holds no credential for any platform. No catalog id yet (placeholder D0 in the content pack)."
+      "catalogId": "D104",
+      "notes": "Host-run: ./scripts/run.sh (port 7250). Docker: HOST_PORT=7250 docker compose up --build -d (published on 127.0.0.1 only). Mock and Live are both loopback-only with zero outbound calls; the lab holds no credential for any platform."
     }
   ]
 }
