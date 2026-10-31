@@ -27,7 +27,7 @@ test('the shelf entry is valid and portable: relative composeFile, loopback url,
 
 test('customer.config.json is git-ignored, and its example only sets the three cast values', () => {
   assert.match(read('.gitignore'), /^customer\.config\.json$/m);
-  assert.deepEqual(Object.keys(JSON.parse(read('customer.config.example.json')).cast).sort(), ['agentId', 'brand', 'host']);
+  assert.deepEqual(Object.keys(JSON.parse(read('customer.config.example.json')).cast).sort(), ['brand', 'engineer', 'host']);
 });
 
 test('no shipped text names a real customer, company or tenant', () => {
@@ -56,7 +56,7 @@ test('the CI workflow is GitHub-hosted, Node 26 only, and carries the forbidden-
   assert.ok(versions.length >= 3 && versions.every((v) => v === '26'), versions.join());
   assert.match(ci, /forbidden-strings:/);
   assert.match(ci, /gitleaks/);
-  assert.match(ci, /PORT=7209 npm run doctor/);
+  assert.match(ci, /PORT=7259 npm run doctor/);
 });
 
 test('package.json requires Node 26 and the Dockerfile uses a Node 26 base', () => {
@@ -95,4 +95,20 @@ test('README sections follow the standard order (Troubleshooting, Ownership, Not
   assert.match(r, /lab-invented/i);
   assert.match(r, /run by hand/);
   assert.match(r, /util\.parseEnv/);
+});
+
+test('app CSS follows the CSS standard: tokens only, no dark-mode media query, no forced priority, no italics, breakpoints 600 and 900 only, no purple', () => {
+  const css = read('web/src/app.css');
+  assert.ok(!/#[0-9a-fA-F]{3,8}\b|\brgba?\(|\bhsla?\(/.test(css), 'no colour literal');
+  assert.ok(!/prefers-color-scheme/.test(css)); assert.ok(!/!important/.test(css)); assert.ok(!/font-style:\s*italic/.test(css));
+  const widths = [...css.matchAll(/@media \((?:max|min)-width: (\d+)px\)/g)].map((m) => m[1]);
+  assert.ok(widths.length > 0 && widths.every((w) => w === '600' || w === '900'), widths.join());
+  assert.ok(!/purple|violet|magenta|indigo/i.test(css + read('web/src/styles/standalone-ui.css').replace(/--[a-z-]+:[^;]*;/g, '')));
+  const main = read('web/src/main.jsx');
+  assert.ok(main.indexOf('standalone-ui.css') < main.indexOf('app.css'), 'the shared stylesheet loads before the app stylesheet');
+  assert.ok(!/style=\{\{/.test(['App.jsx', 'components/RequestTab.jsx', 'components/ApprovalsTab.jsx', 'components/TimelineTab.jsx', 'components/DriftTab.jsx', 'components/PlatformsTab.jsx'].map((f) => read(`web/src/${f}`)).join('\n')), 'no style attributes outside diagram positions');
+});
+
+test('the repo carries no k8s manifests, no bare MODE and no credential field in the web code', () => {
+  for (const f of ['App.jsx', 'components/RequestTab.jsx', 'components/ApprovalsTab.jsx', 'components/DriftTab.jsx', 'components/PlatformsTab.jsx']) assert.ok(!/type="password"|process\.env\.MODE/.test(read(`web/src/${f}`)), f);
 });

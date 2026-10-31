@@ -29,7 +29,8 @@ export default function useLab({ mode, vertical, scenario }) {
     const mine = ++actSeq.current; const key = `${mode}|${vertical}`;
     inflight.current += 1; setBusy(true);
     try {
-      const r = await sendJson(method, route, { mode, vertical, ...extra });
+      const raw = await sendJson(method, route, { mode, vertical, refusalsAs200: true, ...extra });
+      const r = { ...raw, ok: raw.ok && raw.body?.ok !== false }; // a refusal comes back as data (200 with ok: false)
       // A newer write, or a switch of mode or vertical, makes this answer stale: it is returned to the caller but not shown.
       if (mine === actSeq.current && key === ctx.current) {
         seq.current += 1; // a load that started before this write must not overwrite its newer state

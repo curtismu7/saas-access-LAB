@@ -130,6 +130,9 @@ export default function App() {
         <div id={`panel-${tab}`} role="tabpanel" aria-labelledby={`tab-${tab}`}>
           {error || lab.error ? <p className="app-error" role="alert">Could not load the lab ({error || lab.error}). Is the server running?</p> : !ready ? <p className="muted">Loading...</p> : (
             <>
+              {mode === "mock" && lab.scenario && ["approvals", "timeline", "drift", "platforms"].includes(tab) && (
+                <p className="muted" data-testid="scenario-note">Showing the end of the scripted scenario "{lab.scenario.title}". Pick another on the Request tab, or switch to Live to act yourself.</p>
+              )}
               {presenter && tab !== "talk" && (
                 <aside className="presenter-say" data-testid="presenter-say" aria-label="Talk track">
                   {story.talkTrack.filter((t) => (PRESENTER_TALK[tab] || []).includes(t.id)).map((t) => <p key={t.id}><strong>{t.title}.</strong> {t.say}</p>)}

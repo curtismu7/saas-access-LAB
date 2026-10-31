@@ -74,13 +74,15 @@ export function createApp({ health = createHealth(), configFile = CONFIG, worksp
         const mode = modeOf(req.body.mode);
         if (!mode) return res.status(400).json({ error: 'bad_mode', detail: 'mode must be mock or live' });
         if (mode === 'mock') return res.status(409).json({ error: 'mock_is_read_only', detail: 'Mock mode only reads tables: switch to Live to act' });
-        if (!Object.keys(req.body).every((k) => ['mode', 'vertical', ...keys].includes(k))) return res.status(400).json({ error: 'unknown_field', detail: 'the body carries a field the lab does not take' });
+        if (!Object.keys(req.body).every((k) => ['mode', 'vertical', 'refusalsAs200', ...keys].includes(k))) return res.status(400).json({ error: 'unknown_field', detail: 'the body carries a field the lab does not take' });
         const vertical = verticalOf(req);
         const r = runAction({ ws: id, workspaces, vertical, cast: castFor(req), op, params: params(req), traceparent: req.headers.traceparent, route: { method: method.toUpperCase(), url: `/api${route}` } });
         res.set('traceparent', r.traceparent);
         const common = { workspace: id, mode, vertical, hops: r.hops, hopsTruncated: r.hopsTruncated, traceId: r.traceId, state: r.state };
         if (r.outcome.ok) return res.json({ ok: true, result: r.outcome.result, ...common });
-        return res.status(r.outcome.status || 400).json({ ok: false, error: r.outcome.code, detail: r.outcome.detail, ...(r.outcome.errors ? { errors: r.outcome.errors } : {}), ...common });
+        // The page asks for refusals as data (HTTP 200 with ok: false): a browser logs every 4xx answer as a console error, and a refusal the visitor
+        // asked for (self-approval, an expired request) is the point of the demo. Anyone else gets the honest 4xx status.
+        return res.status(req.body.refusalsAs200 === true ? 200 : (r.outcome.status || 400)).json({ ok: false, error: r.outcome.code, detail: r.outcome.detail, ...(r.outcome.errors ? { errors: r.outcome.errors } : {}), ...common });
       } catch (e) { return next(e); }
     });
   };

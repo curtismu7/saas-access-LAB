@@ -223,3 +223,21 @@ test('zero outbound network attempts across the whole API in both modes', async 
   });
   assert.deepEqual(guard.attempts, []);
 });
+
+test('refusalsAs200: the page may ask for a refusal as data (HTTP 200, ok false) so a browser does not log it as a failed request; everyone else gets the honest status', async () => {
+  await withServer(async (url) => {
+    await ask(url, { policyId: 'pol-incident', requestedBy: C.castSecLead, subjectId: C.castSecLead });
+    const body = (extra) => live({ decision: { approver: C.castSecLead, decision: 'approve' }, ...extra });
+    const plain = await post(url, '/api/requests/req-0001/decision', body(), W('default'));
+    assert.equal(plain.status, 403);
+    const asData = await post(url, '/api/requests/req-0001/decision', body({ refusalsAs200: true }), W('default'));
+    const b = await asData.json();
+    assert.equal(asData.status, 200); assert.equal(b.ok, false); assert.equal(b.error, 'self_approval_refused'); assert.ok(b.state);
+    const hostile = await post(url, '/api/requests/req-0001/decision', body({ refusalsAs200: 'yes' }), W('default'));
+    assert.equal(hostile.status, 403, 'only the boolean true counts');
+    const bad = await post(url, '/api/requests', live({ refusalsAs200: true, request: spec({ durationMin: 'x' }) }));
+    assert.equal(bad.status, 200); assert.equal((await bad.json()).error, 'bad_duration');
+    assert.equal((await post(url, '/api/requests', live({ refusalsAs200: true, request: spec(), token: 1 }))).status, 400, 'a malformed body is still a 400');
+    assert.equal((await post(url, '/api/clock', { mode: 'mock', refusalsAs200: true, clock: { minutes: 5 } })).status, 409, 'Mock stays read-only with a 409');
+  });
+});
