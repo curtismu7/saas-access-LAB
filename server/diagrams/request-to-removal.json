@@ -1,0 +1,179 @@
+{
+  "schema": "diagram-studio/1",
+  "id": "request-to-removal",
+  "title": "Request, approve, expire, remove: one cycle",
+  "lede": "A person or an agent asks for time-bound access. Privilege routes the request, an approver acts in chat, the platform gets a grant that carries an expiry, a receipt is written, and a reaper removes the access when the window closes. Ping release claim, UNVERIFIED on our tenant. Simulated.",
+  "groups": {
+    "client": {
+      "label": "Requester",
+      "color": "dark"
+    },
+    "gateway": {
+      "label": "Privilege",
+      "color": "red"
+    },
+    "policy": {
+      "label": "Approvers and tools",
+      "color": "blue"
+    },
+    "upstream": {
+      "label": "Platforms",
+      "color": "grey"
+    },
+    "audit": {
+      "label": "Record",
+      "color": "grey"
+    }
+  },
+  "nodes": [
+    {
+      "id": "req",
+      "label": "Engineer or agent ({{castEngineer}}, {{castAgent}})",
+      "group": "client",
+      "x": 0,
+      "y": 200
+    },
+    {
+      "id": "priv",
+      "label": "Privilege: policy, routing, approval",
+      "group": "gateway",
+      "x": 400,
+      "y": 200
+    },
+    {
+      "id": "chat",
+      "label": "Approver in Slack or Mattermost",
+      "group": "policy",
+      "x": 400,
+      "y": 0
+    },
+    {
+      "id": "notify",
+      "label": "Teams, Jira, ServiceNow (notified)",
+      "group": "policy",
+      "x": 0,
+      "y": 0
+    },
+    {
+      "id": "plat",
+      "label": "Platform: GitHub, GitLab, Salesforce, Snowflake, Databricks, Google",
+      "group": "upstream",
+      "x": 800,
+      "y": 200
+    },
+    {
+      "id": "rec",
+      "label": "Receipts and audit trail",
+      "group": "audit",
+      "x": 400,
+      "y": 400
+    },
+    {
+      "id": "reap",
+      "label": "Reaper (reconciles continuously)",
+      "group": "gateway",
+      "x": 800,
+      "y": 400
+    }
+  ],
+  "edges": [
+    {
+      "source": "req",
+      "target": "priv",
+      "label": "request"
+    },
+    {
+      "source": "priv",
+      "target": "chat",
+      "label": "ask the approver"
+    },
+    {
+      "source": "chat",
+      "target": "priv",
+      "label": "approve or deny"
+    },
+    {
+      "source": "priv",
+      "target": "notify",
+      "label": "notify and ticket"
+    },
+    {
+      "source": "priv",
+      "target": "plat",
+      "label": "grant with expiry"
+    },
+    {
+      "source": "priv",
+      "target": "rec",
+      "label": "write the receipt"
+    },
+    {
+      "source": "rec",
+      "target": "reap",
+      "label": "expiry list"
+    },
+    {
+      "source": "reap",
+      "target": "plat",
+      "label": "remove at expiry"
+    }
+  ],
+  "steps": [
+    {
+      "title": "Request",
+      "what": "The requester picks a platform, a resource, a level, a duration and a reason. A request with no expiry cannot be made. Agents and people use the same request.",
+      "edges": [
+        0
+      ]
+    },
+    {
+      "title": "Ask the approver",
+      "what": "Privilege routes the request to the right approver for the first level of the policy's chain: the manager, the owner of the resource, the security group or the data owner. Never the requester.",
+      "edges": [
+        1
+      ]
+    },
+    {
+      "title": "Approve or deny",
+      "what": "The approver acts directly from Slack or Mattermost, or in the console. Self-approval is refused, an agent cannot approve, and an expired request cannot be approved.",
+      "edges": [
+        2
+      ]
+    },
+    {
+      "title": "Notify and ticket",
+      "what": "Microsoft Teams, Jira and ServiceNow only receive notifications and tickets: they cannot approve.",
+      "edges": [
+        3
+      ]
+    },
+    {
+      "title": "Grant with expiry",
+      "what": "When the last level approves, the platform gets the access. The grant carries the expiry from the start.",
+      "edges": [
+        4
+      ]
+    },
+    {
+      "title": "Write the receipt",
+      "what": "Every grant is recorded in a receipt chained to the one before it, with its reference count when policies overlap.",
+      "edges": [
+        5
+      ]
+    },
+    {
+      "title": "Expiry list",
+      "what": "The reaper works from the receipts, not from the request that created them, so it still acts when the original workflow is long finished.",
+      "edges": [
+        6
+      ]
+    },
+    {
+      "title": "Remove at expiry",
+      "what": "When the last reference expires the access is removed from the platform. If another grant still holds it, the platform keeps it.",
+      "edges": [
+        7
+      ]
+    }
+  ]
+}

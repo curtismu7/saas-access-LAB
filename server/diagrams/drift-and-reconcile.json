@@ -1,0 +1,129 @@
+{
+  "schema": "diagram-studio/1",
+  "id": "drift-and-reconcile",
+  "title": "Drift: access granted outside Privilege",
+  "lede": "Someone changes a platform by hand. The nightly reconcile reads the platform and the receipts, and flags the difference. Ping release claim, UNVERIFIED on our tenant. Simulated.",
+  "groups": {
+    "client": {
+      "label": "By hand",
+      "color": "dark"
+    },
+    "gateway": {
+      "label": "Privilege",
+      "color": "red"
+    },
+    "upstream": {
+      "label": "Platform",
+      "color": "grey"
+    },
+    "audit": {
+      "label": "Record",
+      "color": "grey"
+    },
+    "policy": {
+      "label": "Finding",
+      "color": "blue"
+    }
+  },
+  "nodes": [
+    {
+      "id": "admin",
+      "label": "An administrator on the platform",
+      "group": "client",
+      "x": 0,
+      "y": 200
+    },
+    {
+      "id": "plat",
+      "label": "The platform's own state",
+      "group": "upstream",
+      "x": 400,
+      "y": 200
+    },
+    {
+      "id": "rec",
+      "label": "Receipts (what Privilege granted)",
+      "group": "audit",
+      "x": 800,
+      "y": 400
+    },
+    {
+      "id": "recon",
+      "label": "Nightly reconcile",
+      "group": "gateway",
+      "x": 800,
+      "y": 200
+    },
+    {
+      "id": "find",
+      "label": "Drift finding: unrecorded, elevated or missing",
+      "group": "policy",
+      "x": 800,
+      "y": 0
+    }
+  ],
+  "edges": [
+    {
+      "source": "admin",
+      "target": "plat",
+      "label": "grant by hand"
+    },
+    {
+      "source": "recon",
+      "target": "plat",
+      "label": "read the platform"
+    },
+    {
+      "source": "rec",
+      "target": "recon",
+      "label": "read the receipts"
+    },
+    {
+      "source": "recon",
+      "target": "find",
+      "label": "flag the difference"
+    },
+    {
+      "source": "find",
+      "target": "plat",
+      "label": "revoke on request"
+    }
+  ],
+  "steps": [
+    {
+      "title": "Grant by hand",
+      "what": "An administrator adds a collaborator, a role or a privilege directly on the platform. Privilege was not asked and has no receipt.",
+      "edges": [
+        0
+      ]
+    },
+    {
+      "title": "Read the platform",
+      "what": "Every night (02:00 on the lab clock, or when you press the button) the reconcile reads what each platform actually holds.",
+      "edges": [
+        1
+      ]
+    },
+    {
+      "title": "Read the receipts",
+      "what": "It reads what Privilege says it granted, with the highest live level for each person and resource.",
+      "edges": [
+        2
+      ]
+    },
+    {
+      "title": "Flag the difference",
+      "what": "Access with no receipt is unrecorded, more access than the receipts justify is elevated, a receipt with no access is missing.",
+      "edges": [
+        3
+      ]
+    },
+    {
+      "title": "Revoke on request",
+      "what": "An unrecorded or elevated finding can be removed from the platform. The reaper never does this by itself: the access was never a grant.",
+      "edges": [
+        4
+      ]
+    }
+  ]
+}

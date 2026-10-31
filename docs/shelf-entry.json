@@ -1,0 +1,15 @@
+{
+  "demos": [
+    {
+      "id": "saas-access-lab",
+      "name": "SaaS Access LAB",
+      "kind": "Demo",
+      "description": "Just-in-time, time-bound access to GitHub, GitLab, Salesforce, Snowflake, Databricks and Google Workspace, with approval chains, self-approval blocked, a reaper that removes access on expiry, receipts, reference counting and nightly drift detection, the same for humans and agents: a simulation of the 2026-11-02 Ping release claims. Mock tables, or a Live local engine with a lab clock you move. Every product claim is UNVERIFIED on our tenant.",
+      "url": "http://localhost:7250",
+      "healthPath": "/api/health",
+      "composeFile": "saas-access-LAB/docker-compose.yml",
+      "composeOverlays": [],
+      "notes": "Host-run: ./scripts/run.sh (port 7250). Docker: HOST_PORT=7250 docker compose up --build -d (published on 127.0.0.1 only). Mock and Live are both loopback-only with zero outbound calls; the lab holds no credential for any platform. No catalog id yet (placeholder D0 in the content pack)."
+    }
+  ]
+}
