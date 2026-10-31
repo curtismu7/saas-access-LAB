@@ -407,6 +407,8 @@ describe("the whole cycle, in the UI: request, approve, refuse the wrong person,
     const row = await screen.findByTestId("grant-row", {}, T);
     expect(row).toHaveTextContent(/active/); expect(screen.getByTestId("refcount")).toHaveTextContent("1");
     expect(screen.getByTestId("receipt-chain")).toHaveTextContent(/verified \(1 receipts/);
+    expect(screen.getByTestId("receipt-head")).toHaveTextContent(/Head [0-9a-f]{16}\.\.\. of 1 receipt/);
+    expect(screen.getByTestId("receipt-head")).toHaveTextContent(/can forge the chain/);
     expect(screen.getByTestId("holdings")).toHaveTextContent(C.castEngineer);
     // going back is refused
     await waitFor(() => expect(screen.getByTestId("adv-back")).toBeEnabled(), T);

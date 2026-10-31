@@ -44,6 +44,7 @@ export default function TimelineTab({ story, mode, lab }) {
       <section className="panel">
         <h2 className="panel__title">Grants and receipts</h2>
         <p className="muted" data-testid="receipt-chain">Receipt chain: {v.ok ? `verified (${v.count} receipts, computed now from the receipts themselves)` : `BROKEN at ${v.at}`} <SourceTag source="invented" /></p>
+        <p className="muted" data-testid="receipt-head">Head {state.receipts.commitment.head.slice(0, 16)}... of {state.receipts.commitment.count} receipt(s), kept beside the receipts: editing, reordering or dropping receipts is detected against it. Without a key or an anchor held elsewhere, someone who can rewrite both can forge the chain, so write the head down if it matters.</p>
         {state.grants.length === 0 ? <p className="muted" data-testid="no-grants">No grants yet.</p> : (
           <div className="scroll"><table className="tbl tbl--wide" data-testid="grants">
             <thead><tr><th>Grant</th><th>Subject</th><th>Access</th><th>Granted</th><th>Expires</th><th>Status</th><th>References</th><th>Approved by</th><th>Receipt</th></tr></thead>
