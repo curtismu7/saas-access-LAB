@@ -133,7 +133,7 @@ npm test    # server (node --test), web (vitest, drives the UI against the real 
 
 The shared checks are run by hand, because the scripts are not shipped into this repo's CI: `bash <AI-DEMO-Standalone>/scripts/check-drift.sh .`, `bash <AI-DEMO-Standalone>/scripts/check-css.sh .` and `node <demo-kit-base>/scripts/conformance.mjs . --new`. Conformance reports two rule-18 FAILs on purpose: the deferred SE k8s manifests, and a heuristic that greps for `process.env.MODE` (this lab reads `SAL_LAB_MODE` instead, because the shared settings file is read by every app).
 
-On Node 26: 261 tests pass (201 server, 37 web, 23 scripts).
+On Node 26: 295 tests pass (223 server, 47 web, 25 scripts).
 
 ## Troubleshooting
 
