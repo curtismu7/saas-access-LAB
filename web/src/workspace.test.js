@@ -19,7 +19,7 @@ describe("workspace ids", () => {
 
   it("the page's rule on a table (scripts/workspace-rule.test.mjs compares it with the server's)", () => {
     for (const id of ["default", "w-0123456789abcdef", "ws-a", "a", "passing-review", "tokens-x", "abcdefabcdefabcdefabcde", "eyhbgcioijiuzi"]) expect(validWorkspaceId(id), id).toBe(true);
-    for (const id of [`pw-${PROBE}`, "sk-abcdefghijklmnop1234", "a3f9c2e17b4d58a6f0c1e9d27b3a45c8e6f1d097", "token-x", "password", "abcdefabcdefabcdefabcdef", "eyjhbgcioijiuzi", "x".repeat(41), "", "A", "a_b", 5, null]) expect(validWorkspaceId(id), String(id)).toBe(false);
+    for (const id of [`pw-${PROBE}`, "sk-abcdefghijklmnop1234", "a3f9c2e17b4d58a6f0c1e9d27b3a45c8e6f1d097", "token-x", "sk-abc", "password", "abcdefabcdefabcdefabcdef", "eyjhbgcioijiuzi", "x".repeat(41), "", "A", "a_b", 5, null]) expect(validWorkspaceId(id), String(id)).toBe(false);
   });
 
   it("a stored id that is refused by the rule is replaced, not used (a stored refused id must not brick the tab)", () => {

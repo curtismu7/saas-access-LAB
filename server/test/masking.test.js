@@ -237,3 +237,9 @@ test('header lines, PINs, bearer values and the decoded round are masked as stat
   // the decoded round that holds the credential is the one shown; a later round that holds nothing does not replace it
   assert.equal(cleanFree(encodeURIComponent(`${pw}=hunter2xyz`)), `${pw}=[masked]`);
 });
+
+test('a passphrase masks the next four words and no more', () => {
+  assert.equal(cleanFree('passphrase: correct horse battery staple'), 'passphrase: [masked]');
+  assert.equal(cleanFree('passphrase: one two three four five six'), 'passphrase: [masked] five six');
+  assert.equal(cleanFree('passphrase is one two'), 'passphrase is [masked]');
+});

@@ -93,7 +93,7 @@ test('E: the catch-all error handler answers fixed JSON for a broken body, a bro
 
 // ---- F: workspace ids
 const HEX40 = 'a3f9c2e17b4d58a6f0c1e9d27b3a45c8e6f1d097';
-const REFUSED = ['abcdefabcdefabcdefabcdef', 'eyjhbgcioijiuzi', `pw-${PROBE}`, `sk-${PROBE2.toLowerCase()}`, HEX40, HEX40.slice(0, 24), HEX40.slice(0, 32), `w-${HEX40}`.slice(0, 40), ['glpat', '-abcdefghijklmnop1234'].join(''), `pass-${PROBE}`, `token-${PROBE}`, `secret-x`, `password`, `a-ghp-x`, 'eyjhbgcioijiuzi1nij9', 'xoxb-1', 'akia1234567890123456', 'x'.repeat(41), 'A', 'a_b', ''];
+const REFUSED = ['sk-abc', 'abcdefabcdefabcdefabcdef', 'eyjhbgcioijiuzi', `pw-${PROBE}`, `sk-${PROBE2.toLowerCase()}`, HEX40, HEX40.slice(0, 24), HEX40.slice(0, 32), `w-${HEX40}`.slice(0, 40), ['glpat', '-abcdefghijklmnop1234'].join(''), `pass-${PROBE}`, `token-${PROBE}`, `secret-x`, `password`, `a-ghp-x`, 'eyjhbgcioijiuzi1nij9', 'xoxb-1', 'akia1234567890123456', 'x'.repeat(41), 'A', 'a_b', ''];
 const ACCEPTED = ['abcdefabcdefabcdefabcde', 'eyhbgcioijiuzi', 'default', 'w-0123456789abcdef', 'ws-a', 'parity-warehouse-role', 'a', 'a'.repeat(19) + '-' + 'b'.repeat(20), 'w-fedcba9876543210', 'tab-1', 'passing-review', 'tokens-x'];
 
 test('F: the server\'s id rule on a table (the page keeps a copy; scripts/workspace-rule.test.mjs compares the two)', () => {
@@ -136,7 +136,7 @@ test('bounds: a text of 400 characters is taken, 401 is refused whole with a 413
     assert.equal((await post(url, `/api/policies/${'r'.repeat(401)}/retire`, live({}), ws)).status, 413);
     // and the preview
     assert.equal((await post(url, '/api/preview', live({ request: spec({ reason: 'q'.repeat(400) }) }), ws)).status, 200);
-    assert.equal((await post(url, '/api/preview', live({ request: spec({ reason: 'q'.repeat(401) }) }), ws)).status, 413);
+    const pv = await post(url, '/api/preview', live({ request: spec({ reason: 'q'.repeat(401) }) }), ws); assert.equal(pv.status, 413); assert.equal(Object.keys(await pv.json()).sort().join(), 'detail,error', 'the preview refusal echoes nothing either');
   });
 });
 
