@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { cleanFree, findCredentials, looksLikeCredential, maskText } from '../src/credentials.js';
 import { maskDeep } from '../src/mask.js';
+import { scrub } from '../src/service.js';
 import { C, newEngine, spec, dec } from './helpers.js';
 import { SECRETS, PLAIN, SWEEP, READABLE, PROBE, PROBE2 } from './secrets.js';
 
@@ -206,4 +207,33 @@ test('reason and comment lengths: 300 and 200 characters are taken, one more is 
   const r2 = e.createRequest(spec({ policyId: 'pol-incident' }));
   assert.throws(() => e.decide(dec(r2.id, C.castSecLead, { decision: 'deny', comment: `${c200}x` })), (err) => err.code === 'comment_too_long' && !/cd/.test(err.message));
   assert.equal(e.snapshot().requests.find((x) => x.id === r2.id).status, 'pending', 'a refused comment changes nothing');
+});
+
+test('the hop echo (scrub) masks on its own, with the INPUT masker: every string and every key, nested, even shapes only the input masker knows (long runs)', () => {
+  const long = SECRETS.key31; // 31 characters, letters and digits: only the input side's long-run detector knows it
+  const out = scrub({ a: long, [long]: [long, { [SWEEP[0][1]]: SWEEP[9][1] }], n: 5, b: true, nil: null, u: undefined, f: () => 1 });
+  const text = JSON.stringify(out);
+  assert.ok(!text.includes(long) && !text.includes(PROBE), text);
+  assert.equal(out.n, 5); assert.equal(out.b, true); assert.equal(out.nil, null); assert.equal(out.u, undefined); assert.equal(out.f, undefined);
+  assert.equal(Object.keys(out).length, 7, 'a, the masked key, n, b, nil, u and f: every key is kept');
+  const two = scrub({ [`x ${SECRETS.github}`]: 1, [`x ${SECRETS.gitlab}`]: 2 }); assert.equal(Object.keys(two).length, 2);
+  assert.equal(scrub('plain words only'), 'plain words only');
+  let deep = 'leaf'; for (let i = 0; i < 20; i += 1) deep = { d: deep };
+  assert.ok(JSON.stringify(scrub(deep)).includes('[nested too deep to show]'), 'nesting past 8 levels is marked, not dropped silently');
+  assert.deepEqual(Object.keys(scrub(JSON.parse('{"__proto__":{"x":1}}'))), ['__proto__']);
+});
+
+test('header lines, PINs, bearer values and the decoded round are masked as stated', () => {
+  assert.equal(cleanFree('cookie: a=b; c=d next'), 'cookie: [masked]', 'a header-style value runs to the end of its line');
+  assert.equal(cleanFree('cookie: a=b\nnext line'), 'cookie: [masked]', 'over-masks on purpose: the separator second look (newline deleted) makes the rest of the text part of that line');
+  assert.equal(cleanFree('Set-Cookie: sid=1; Path=/'), 'Set-Cookie: [masked]');
+  assert.equal(cleanFree('my pin is 4821'), 'my pin is [masked]'); assert.equal(cleanFree('pin code: 123456'), 'pin code: [masked]');
+  assert.equal(cleanFree('pin 4821'), 'pin 4821', 'a PIN needs ":", "=" or "is"'); assert.equal(cleanFree('the pin is loose'), 'the pin is loose');
+  assert.equal(cleanFree(`Bearer ${'a'.repeat(20)}`), 'Bearer [masked]', 'a bearer value of 20 characters, no digit'); assert.equal(cleanFree(`Bearer ${'a'.repeat(19)}`), `Bearer ${'a'.repeat(19)}`);
+  assert.equal(cleanFree('Bearer abcde1'), 'Bearer [masked]', '6 characters with a digit'); assert.equal(cleanFree('Bearer abcdef'), 'Bearer abcdef');
+  assert.equal(cleanFree('see   a   b'), 'see a b', 'whitespace is collapsed');
+  // two overlapping hits become one mask
+  const pw = ['pass', 'word'].join(''); assert.equal(cleanFree(`${pw}=bob:hunter2xyz@host.example`), `${pw}=[masked]`);
+  // the decoded round that holds the credential is the one shown; a later round that holds nothing does not replace it
+  assert.equal(cleanFree(encodeURIComponent(`${pw}=hunter2xyz`)), `${pw}=[masked]`);
 });

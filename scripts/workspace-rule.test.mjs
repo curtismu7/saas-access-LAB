@@ -12,7 +12,7 @@ const TABLE = [
   [`${'a'.repeat(19)}-${'b'.repeat(20)}`, true], ['x'.repeat(19) + '-' + 'y'.repeat(20), true],
   ['pw-hunter2xyz', false], ['sk-abcdefghijklmnop1234', false], ['pass-x', false], ['token-x', false], ['secret-x', false], ['password', false], ['bearer-1', false], ['ghp-abc', false], ['glpat-abc', false],
   ['xoxb-1', false], ['akia-1', false], ['asia-1', false], ['apikey-1', false], ['pwd', false], ['passphrase-a', false], ['a-pk-b', false], ['rk-1', false],
-  [HEX, false], [HEX.slice(0, 24), false], [`w-${HEX}`.slice(0, 40), false], ['eyjhbgcioijiuzi1nij9', false],
+  [HEX, false], [HEX.slice(0, 24), false], ['abcdefabcdefabcdefabcdef', false], ['abcdefabcdefabcdefabcde', true], ['eyjhbgcioijiuzi', false], ['eyhbgcioijiuzi', true], [`w-${HEX}`.slice(0, 40), false], ['eyjhbgcioijiuzi1nij9', false],
   ['x'.repeat(41), false], ['', false], ['A', false], ['a_b', false], ['a b', false], ['a/b', false], ['__proto__', false],
 ];
 

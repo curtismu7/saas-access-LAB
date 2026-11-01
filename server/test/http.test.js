@@ -93,8 +93,8 @@ test('E: the catch-all error handler answers fixed JSON for a broken body, a bro
 
 // ---- F: workspace ids
 const HEX40 = 'a3f9c2e17b4d58a6f0c1e9d27b3a45c8e6f1d097';
-const REFUSED = [`pw-${PROBE}`, `sk-${PROBE2.toLowerCase()}`, HEX40, HEX40.slice(0, 24), HEX40.slice(0, 32), `w-${HEX40}`.slice(0, 40), ['glpat', '-abcdefghijklmnop1234'].join(''), `pass-${PROBE}`, `token-${PROBE}`, `secret-x`, `password`, `a-ghp-x`, 'eyjhbgcioijiuzi1nij9', 'xoxb-1', 'akia1234567890123456', 'x'.repeat(41), 'A', 'a_b', ''];
-const ACCEPTED = ['default', 'w-0123456789abcdef', 'ws-a', 'parity-warehouse-role', 'a', 'a'.repeat(19) + '-' + 'b'.repeat(20), 'w-fedcba9876543210', 'tab-1', 'passing-review', 'tokens-x'];
+const REFUSED = ['abcdefabcdefabcdefabcdef', 'eyjhbgcioijiuzi', `pw-${PROBE}`, `sk-${PROBE2.toLowerCase()}`, HEX40, HEX40.slice(0, 24), HEX40.slice(0, 32), `w-${HEX40}`.slice(0, 40), ['glpat', '-abcdefghijklmnop1234'].join(''), `pass-${PROBE}`, `token-${PROBE}`, `secret-x`, `password`, `a-ghp-x`, 'eyjhbgcioijiuzi1nij9', 'xoxb-1', 'akia1234567890123456', 'x'.repeat(41), 'A', 'a_b', ''];
+const ACCEPTED = ['abcdefabcdefabcdefabcde', 'eyhbgcioijiuzi', 'default', 'w-0123456789abcdef', 'ws-a', 'parity-warehouse-role', 'a', 'a'.repeat(19) + '-' + 'b'.repeat(20), 'w-fedcba9876543210', 'tab-1', 'passing-review', 'tokens-x'];
 
 test('F: the server\'s id rule on a table (the page keeps a copy; scripts/workspace-rule.test.mjs compares the two)', () => {
   for (const id of REFUSED) assert.equal(validWorkspaceId(id), false, id);
