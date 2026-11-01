@@ -17,11 +17,13 @@ import { createWorkspaces, workspaceFrom } from './workspaces.js';
 import { Engine } from './engine.js';
 import { liveState, mockState, runAction } from './service.js';
 import { maskDeep } from './mask.js';
+import { overBounds } from './bounds.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIST = process.env.WEB_DIST || path.resolve(HERE, '../../web/dist');
 const CONFIG = process.env.CUSTOMER_CONFIG || path.resolve(HERE, '../../customer.config.json');
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+const TOO_BIG = 'a text (over 400 characters), a name (over 80), a list (over 20), an object (over 40 keys) or the nesting (over 6 levels) is more than the lab takes: nothing was run';
 
 export function createApp({ health = createHealth(), configFile = CONFIG, workspaces = createWorkspaces(), table = MOCK_TABLE, webDist = WEB_DIST } = {}) {
   const app = express();
@@ -31,6 +33,18 @@ export function createApp({ health = createHealth(), configFile = CONFIG, worksp
   app.use((_req, res, next) => { res.set('X-Content-Type-Options', 'nosniff'); next(); });
 
   const api = express.Router();
+  // The known routes and the methods each takes (filled in as they are registered below). A wrong method on a known route is a 405 with Allow, never a
+  // 404 that hides the route and never Express's HTML. HEAD follows GET.
+  const known = [];
+  const knows = (method, re) => known.push({ method, re });
+  api.use((req, res, next) => {
+    const hits = known.filter((k) => k.re.test(req.path));
+    if (!hits.length) return next();
+    const allowed = [...new Set(hits.map((k) => k.method))];
+    if (allowed.includes(req.method) || (req.method === 'HEAD' && allowed.includes('GET'))) return next();
+    return res.set('Allow', allowed.includes('GET') ? 'GET, HEAD' : allowed.join(', ')).status(405).json({ error: 'method_not_allowed' });
+  });
+  knows('GET', /^\/health\/?$/i);
   api.use(express.json({ limit: '32kb' }));
   // Defence in depth: every JSON answer is masked for credential-shaped values, whatever path produced it.
   api.use((_req, res, next) => { const send = res.json.bind(res); res.json = (b) => send(maskDeep(b)); next(); });
@@ -41,11 +55,11 @@ export function createApp({ health = createHealth(), configFile = CONFIG, worksp
   const ws = (req, res) => { const id = workspaceFrom(req); if (!id) res.status(400).json({ error: 'bad_workspace' }); return id; };
   const bodyOf = (req) => (isObj(req.body) ? req.body : {});
 
-  api.get('/story', (req, res) => { noStore(res); res.json(buildStory(castFor(req), verticalOf(req))); });
-  api.get('/diagram', (req, res) => { noStore(res); res.json(buildDiagram(castFor(req), DIAGRAM_NAMES.includes(req.query.name) ? req.query.name : DIAGRAM_NAMES[0])); });
-  api.get('/info', (_req, res) => { noStore(res); res.json({ mode: defaultMode(), modes: ['mock', 'live'], simulated: true, release: '2026-11-02', unverified: true }); });
+  knows('GET', /^\/story\/?$/i); api.get('/story', (req, res) => { noStore(res); res.json(buildStory(castFor(req), verticalOf(req))); });
+  knows('GET', /^\/diagram\/?$/i); api.get('/diagram', (req, res) => { noStore(res); res.json(buildDiagram(castFor(req), DIAGRAM_NAMES.includes(req.query.name) ? req.query.name : DIAGRAM_NAMES[0])); });
+  knows('GET', /^\/info\/?$/i); api.get('/info', (_req, res) => { noStore(res); res.json({ mode: defaultMode(), modes: ['mock', 'live'], simulated: true, release: '2026-11-02', unverified: true }); });
 
-  api.get('/state', (req, res) => {
+  knows('GET', /^\/state\/?$/i); api.get('/state', (req, res) => {
     const id = ws(req, res); if (!id) return;
     noStore(res);
     const mode = modeOf(req.query.mode); if (!mode) return res.status(400).json({ error: 'bad_mode', detail: 'mode must be mock or live' });
@@ -55,9 +69,11 @@ export function createApp({ health = createHealth(), configFile = CONFIG, worksp
   });
 
   // Read-only: the same checks and routing as a real request, creating nothing. Mock uses a fresh engine, Live the workspace's own.
+  knows('POST', /^\/preview\/?$/i);
   api.post('/preview', (req, res) => {
     const id = ws(req, res); if (!id) return;
     noStore(res);
+    if (overBounds(req.body)) return res.status(413).json({ error: 'payload_too_large', detail: TOO_BIG });
     const body = bodyOf(req);
     const mode = modeOf(body.mode); if (!mode) return res.status(400).json({ error: 'bad_mode', detail: 'mode must be mock or live' });
     const e = mode === 'mock' ? new Engine(castFor(req)) : workspaces.engine(id, verticalOf(req), castFor(req));
@@ -65,12 +81,15 @@ export function createApp({ health = createHealth(), configFile = CONFIG, worksp
   });
 
   // Every write: Live only, strict top-level keys, one trace, hops, and the whole fresh state back.
-  const write = (method, route, { op, keys, params }) => {
+  const write = (method, route, re, { op, keys, params }) => {
+    knows(method.toUpperCase(), re);
     api[method](route, (req, res, next) => {
       const id = ws(req, res); if (!id) return;
       noStore(res);
       try {
         if (!isObj(req.body)) return res.status(400).json({ error: 'bad_request' });
+        // A text, a key, a list, an object or a nesting over a bound (bounds.js), in the body or in the path, is refused whole before anything runs.
+        if (overBounds(req.body) || overBounds(req.params)) return res.status(413).json({ error: 'payload_too_large', detail: TOO_BIG });
         const mode = modeOf(req.body.mode);
         if (!mode) return res.status(400).json({ error: 'bad_mode', detail: 'mode must be mock or live' });
         if (mode === 'mock') return res.status(409).json({ error: 'mock_is_read_only', detail: 'Mock mode only reads tables: switch to Live to act' });
@@ -87,27 +106,41 @@ export function createApp({ health = createHealth(), configFile = CONFIG, worksp
     });
   };
   const idParam = (req) => (typeof req.params.id === 'string' ? req.params.id : '');
-  write('post', '/requests', { op: 'request', keys: ['request'], params: (req) => req.body.request });
-  write('post', '/requests/:id/decision', { op: 'decide', keys: ['decision'], params: (req) => ({ ...(isObj(req.body.decision) ? req.body.decision : { __bad: 1 }), requestId: idParam(req) }) });
-  write('post', '/requests/:id/cancel', { op: 'cancel', keys: ['by'], params: (req) => ({ requestId: idParam(req), by: req.body.by }) });
-  write('post', '/clock', { op: 'advance', keys: ['clock'], params: (req) => (isObj(req.body.clock) ? req.body.clock : { __bad: 1 }) });
-  write('post', '/reaper/run', { op: 'reap', keys: [], params: () => ({}) });
-  write('post', '/drift/reconcile', { op: 'reconcile', keys: [], params: () => ({}) });
-  write('post', '/drift/remediate', { op: 'remediate', keys: ['findingId'], params: (req) => ({ findingId: req.body.findingId }) });
-  write('post', '/platforms/out-of-band', { op: 'outOfBand', keys: ['change'], params: (req) => (isObj(req.body.change) ? req.body.change : { __bad: 1 }) });
-  write('post', '/platforms/sync', { op: 'setSync', keys: ['change'], params: (req) => req.body.change });
-  write('put', '/policies/:id', { op: 'updatePolicy', keys: ['policy'], params: (req) => ({ id: idParam(req), policy: req.body.policy }) });
-  write('post', '/policies/:id/retire', { op: 'retirePolicy', keys: [], params: (req) => ({ id: idParam(req) }) });
-  write('put', '/integrations', { op: 'updateIntegrations', keys: ['integrations'], params: (req) => req.body.integrations });
+  write('post', '/requests', /^\/requests\/?$/i, { op: 'request', keys: ['request'], params: (req) => req.body.request });
+  write('post', '/requests/:id/decision', /^\/requests\/[^/]+\/decision\/?$/i, { op: 'decide', keys: ['decision'], params: (req) => ({ ...(isObj(req.body.decision) ? req.body.decision : { __bad: 1 }), requestId: idParam(req) }) });
+  write('post', '/requests/:id/cancel', /^\/requests\/[^/]+\/cancel\/?$/i, { op: 'cancel', keys: ['by'], params: (req) => ({ requestId: idParam(req), by: req.body.by }) });
+  write('post', '/clock', /^\/clock\/?$/i, { op: 'advance', keys: ['clock'], params: (req) => (isObj(req.body.clock) ? req.body.clock : { __bad: 1 }) });
+  write('post', '/reaper/run', /^\/reaper\/run\/?$/i, { op: 'reap', keys: [], params: () => ({}) });
+  write('post', '/drift/reconcile', /^\/drift\/reconcile\/?$/i, { op: 'reconcile', keys: [], params: () => ({}) });
+  write('post', '/drift/remediate', /^\/drift\/remediate\/?$/i, { op: 'remediate', keys: ['findingId'], params: (req) => ({ findingId: req.body.findingId }) });
+  write('post', '/platforms/out-of-band', /^\/platforms\/out-of-band\/?$/i, { op: 'outOfBand', keys: ['change'], params: (req) => (isObj(req.body.change) ? req.body.change : { __bad: 1 }) });
+  write('post', '/platforms/sync', /^\/platforms\/sync\/?$/i, { op: 'setSync', keys: ['change'], params: (req) => req.body.change });
+  write('put', '/policies/:id', /^\/policies\/[^/]+\/?$/i, { op: 'updatePolicy', keys: ['policy'], params: (req) => ({ id: idParam(req), policy: req.body.policy }) });
+  write('post', '/policies/:id/retire', /^\/policies\/[^/]+\/retire\/?$/i, { op: 'retirePolicy', keys: [], params: (req) => ({ id: idParam(req) }) });
+  write('put', '/integrations', /^\/integrations\/?$/i, { op: 'updateIntegrations', keys: ['integrations'], params: (req) => req.body.integrations });
 
   // Reset clears this workspace's engines (requests, grants, receipts, platform state, outbox, audit, the clock) and nothing else.
+  knows('POST', /^\/reset\/?$/i);
   api.post('/reset', (req, res) => { const id = ws(req, res); if (!id) return; noStore(res); workspaces.reset(id); return res.json({ reset: 'ok', workspace: id }); });
   api.use((_req, res) => res.status(404).json({ error: 'not_found' }));
   app.use('/api', api);
 
-  if (fs.existsSync(path.join(webDist, 'index.html'))) {
-    app.use(express.static(webDist));
-    app.get(/^\/(?!api\/).*/, (_req, res) => res.sendFile(path.join(webDist, 'index.html')));
+  // Outside /api only a GET or HEAD can succeed: a write to the page is 405 (Allow) on "/" and a JSON 404 anywhere else.
+  const hasShell = fs.existsSync(path.join(webDist, 'index.html'));
+  app.use((req, res, next) => {
+    if (req.method === 'GET' || req.method === 'HEAD') return next();
+    return hasShell && req.path === '/' ? res.set('Allow', 'GET, HEAD').status(405).json({ error: 'method_not_allowed' }) : res.status(404).json({ error: 'not_found' });
+  });
+  if (hasShell) {
+    app.use(express.static(webDist, { redirect: false }));
+    // The app shell answers only a GET of an extension-less, non-dotfile path. A missing file (/assets/x.js, /favicon.ico, /robots.txt, /foo.map, /foo.svg,
+    // /sitemap.xml, /.env) is a JSON 404, never 200 HTML: a broken asset link must fail loudly.
+    app.get(/^\/(?!api(?:\/|$)).*/, (req, res, next) => {
+      let p; try { p = decodeURIComponent(req.path); } catch { return next(); }
+      const parts = p.split('/');
+      if (parts.at(-1).includes('.') || parts.some((x) => x.startsWith('.'))) return next();
+      return res.sendFile(path.join(webDist, 'index.html'));
+    });
   }
   // The last two handlers catch everything that is left, for every method and every path: Express's default answers ("Cannot POST /<path>", or an
   // HTML stack trace with file paths) would echo the path the visitor typed, which may be a token. Fixed JSON, no path.

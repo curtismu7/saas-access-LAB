@@ -34,7 +34,8 @@ const EDITABLE = ['maxLevel', 'maxDurationMin', 'chain', 'requireDistinctApprove
 export function validateEdit(raw, current) {
   const errors = [];
   if (!isObj(raw)) return { ok: false, errors: ['the policy must be an object'] };
-  for (const k of Object.keys(raw)) if (!EDITABLE.includes(k)) errors.push(`unknown field ${JSON.stringify(k.slice(0, 20)).replace(/[^\w".-]/g, '?')}`);
+  // Fixed text: a key name the visitor typed (it may be a credential) is never quoted, not even a slice of it.
+  if (Object.keys(raw).some((k) => !EDITABLE.includes(k))) errors.push('the policy carries a field the lab does not take');
   const levels = RESOURCES[current.resources[0]].levels;
   const v = {};
   const level = (x) => typeof x === 'string' && levels.includes(x);

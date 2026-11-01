@@ -2,16 +2,25 @@
 // (requests, grants, receipts, the platforms' own state, the audit trail, the outbox and the lab clock). Bounded in count and age.
 // The browser sends its id in X-Workspace (default "default"). Reset clears the current workspace only.
 import { Engine } from './engine.js';
-import { findCredentials } from './credentials.js';
+import { looksLikeCredential } from './credentials.js';
 
 export const WORKSPACE_RE = /^[a-z0-9-]{1,40}$/;
 export const DEFAULT_WORKSPACE = 'default';
 
+// An id is echoed back in the `workspace` field and in the hop headers, so one that looks like a credential is refused (400 bad_workspace), never echoed:
+// 24 or more hex characters in a row, a JWT start, a hyphen-separated part that names a credential or starts a token (sk-, pw-, ghp-, token-, password-,
+// ...), or anything the masker would change. The page keeps a copy of this rule (web/src/workspace.js); a test compares the two on a table of ids.
+export const CREDENTIAL_PARTS = new Set(['sk', 'pk', 'rk', 'pw', 'pwd', 'pass', 'passwd', 'password', 'passphrase', 'secret', 'token', 'apikey', 'bearer', 'glpat', 'ghp', 'gho', 'ghu', 'ghs', 'xoxa', 'xoxb', 'xoxp', 'xoxr', 'xoxs', 'akia', 'asia']);
+export function validWorkspaceId(s) {
+  if (typeof s !== 'string' || !WORKSPACE_RE.test(s) || /[0-9a-f]{24,}/.test(s) || s.startsWith('eyj')) return false;
+  if (s.split('-').some((part) => CREDENTIAL_PARTS.has(part))) return false;
+  return !looksLikeCredential(s);
+}
+
 export function workspaceFrom(req) {
   const raw = req.headers['x-workspace'];
   if (raw === undefined) return DEFAULT_WORKSPACE;
-  // An id that looks like a credential (a 40-hex token, a long mixed run) is refused rather than echoed back in the `workspace` field and the hop headers.
-  return typeof raw === 'string' && WORKSPACE_RE.test(raw) && findCredentials(raw).length === 0 ? raw : null;
+  return validWorkspaceId(raw) ? raw : null;
 }
 
 export function createWorkspaces({ max = 500, ttlMs = 60 * 60 * 1000, now = Date.now } = {}) {
