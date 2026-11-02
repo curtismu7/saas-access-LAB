@@ -9,7 +9,6 @@ import { Engine } from './engine.js';
 import { EXPECTED, buildMockTable, runScenario, scenarioList } from './scenarios.js';
 import { defaultPolicies, policyProblems } from './policies.js';
 import { RESOURCES, PLATFORMS } from './catalog.js';
-import { findCredentials } from './credentials.js';
 import { maskDeep } from './mask.js';
 import { modeFrom } from './config.js';
 import { DIAGRAM_NAMES, buildDiagram } from './diagramData.js';
@@ -74,7 +73,7 @@ export async function runChecks({ env = process.env, table = MOCK_TABLE } = {}) 
   const hosts = scanHosts(filled);
   add('story-hosts', hosts.length ? 'fail' : 'pass', hosts.length ? `non-reserved hosts: ${hosts.join(', ')}` : 'every host in the story data is .invalid or .example');
   const keys = scanKeys(filled);
-  const creds = findCredentials(filled);
+  const creds = Object.entries(VERTICALS).filter(([k, v2]) => JSON.stringify(maskDeep(buildStory(v2, k))) !== JSON.stringify(buildStory(v2, k)));
   add('story-keys', keys.length || creds.length ? 'fail' : 'pass', keys.length || creds.length ? 'credential-shaped text in the story data' : 'no credential-shaped value anywhere in the story data');
   const story = buildStory(VERTICALS.finance, 'finance');
   add('masking', JSON.stringify(maskDeep(story)) === JSON.stringify(story) ? 'pass' : 'fail', 'the response mask leaves the story untouched (it only changes credential-shaped values)');

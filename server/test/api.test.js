@@ -203,11 +203,11 @@ test('the Host check, same-origin writes, body size, JSON errors and 404 behave;
   await withServer(async (url) => {
     assert.equal((await rawHttp(`${url}/api/health`, { headers: { host: 'evil.example.invalid' } })).status, 403);
     assert.equal((await post(url, '/api/reset', {}, { origin: 'http://evil.example.invalid' })).status, 403);
-    assert.equal((await post(url, '/api/requests', live({ request: { reason: 'x'.repeat(40000) } }))).status, 413);
+    assert.equal((await post(url, '/api/requests', live({ request: { reason: 'x'.repeat(40000) } }))).status, 413); // over the 32 kb body limit
     const bad = await rawHttp(`${url}/api/requests`, { method: 'POST', headers: { host: new URL(url).host, 'content-type': 'application/json', origin: url }, body: '{"mode":' });
     assert.equal(bad.status, 400); assert.doesNotMatch(bad.text, /node_modules|at .*\(/);
     const nf = await get(url, '/api/nope'); assert.equal(nf.status, 404); assert.deepEqual(await nf.json(), { error: 'not_found' });
-    assert.equal((await get(url, '/api/requests/req-0001/decision')).status, 404);
+    const wrong = await get(url, '/api/requests/req-0001/decision'); assert.equal(wrong.status, 405); assert.equal(wrong.headers.get('allow'), 'POST'); assert.deepEqual(await wrong.json(), { error: 'method_not_allowed' });
     assert.equal((await get(url, '/api/health')).headers.get('x-content-type-options'), 'nosniff');
   });
 });

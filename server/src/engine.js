@@ -121,10 +121,11 @@ export class Engine {
     need(rankOf(i.resource, i.level) <= rankOf(i.resource, policy.maxLevel), 'level_above_policy', 'the level is above what the policy may grant', 400);
     need(i.durationMin <= policy.maxDurationMin, 'duration_above_policy', 'the duration is longer than the policy allows', 400);
     need(i.reason === undefined || typeof i.reason === 'string', 'bad_reason', 'reason must be text');
+    need(i.reason === undefined || i.reason.length <= LIMITS.reason, 'reason_too_long', `a reason is at most ${LIMITS.reason} characters: it is refused, never cut`);
     const subject = { kind: i.subjectKind, id: i.subjectId };
     const sp = this.people.get(i.subjectId);
     need(i.requestedBy === i.subjectId || i.requestedBy === (sp.kind === 'human' ? sp.manager : sp.custodian), 'requester_not_allowed', 'a request is made by the subject or by the subject\'s manager (an agent\'s custodian)', 403);
-    return { requestedBy: i.requestedBy, subject, platform: i.platform, resource: i.resource, level: i.level, durationMin: i.durationMin, policy, reason: cleanFree(i.reason, LIMITS.reason) };
+    return { requestedBy: i.requestedBy, subject, platform: i.platform, resource: i.resource, level: i.level, durationMin: i.durationMin, policy, reason: cleanFree(i.reason) };
   }
 
   autoApproves(policy, spec) {
@@ -215,6 +216,7 @@ export class Engine {
     need(i.decision === 'approve' || i.decision === 'deny', 'bad_decision', 'decision must be approve or deny');
     need(i.via === undefined || VIA.includes(i.via), 'bad_channel', `via must be one of ${VIA.join(', ')}`);
     need(i.comment === undefined || typeof i.comment === 'string', 'bad_comment', 'comment must be text');
+    need(i.comment === undefined || i.comment.length <= LIMITS.comment, 'comment_too_long', `a comment is at most ${LIMITS.comment} characters: it is refused, never cut`);
     const via = i.via ?? 'console';
     const approver = this.people.get(i.approver);
     // A request already past its approval window is expired first, so an approval that arrives late is refused for the right reason.
@@ -227,7 +229,7 @@ export class Engine {
     need(level.candidates.some((c) => c.id === i.approver && c.allowed), 'not_an_approver', `not an approver for level ${req.currentLevel + 1} (${level.role}) of this request`, 403);
     need(!NOTIFY_ONLY.includes(via), 'channel_notify_only', `${via} only receives notifications and tickets: approve from the console, Slack or Mattermost`, 400);
     if (CHAT.includes(via)) need(req.chatActions.some((c) => c.to === i.approver && c.channel === via && c.level === req.currentLevel), 'no_chat_action', `no ${via} message with Approve and Deny buttons was sent to this approver for this level`, 403);
-    const comment = cleanFree(i.comment, LIMITS.comment);
+    const comment = cleanFree(i.comment);
     if (i.decision === 'deny') {
       req.status = 'denied'; req.approval.DeniedBy = i.approver; req.approval.DenialReason = comment || 'denied'; req.approval.DecidedAt = iso(this.now);
       this.audit('request.denied', i.approver, { requestId: req.id, via });

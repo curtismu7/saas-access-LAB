@@ -61,12 +61,12 @@ test('typing every credential shape into every field of every endpoint never ech
 test('a credential in a real, accepted request is masked in the response, the hops, the outbox, the receipts and the audit trail', async () => {
   await withServer(async (url) => {
     for (const [name, n] of Object.entries(NEEDLES)) {
-      const ws = `echo-${name.toLowerCase()}`.slice(0, 30).replace(/[^a-z0-9-]/g, '-');
+      const ws = `echo-${Object.keys(NEEDLES).indexOf(name)}`; // not the shape's name: "bearer" or "token" in an id is refused (bad_workspace)
       const r = await post(url, '/api/requests', live({ request: spec({ policyId: 'pol-incident', reason: `please ${n.raw} thanks` }) }), W(ws));
       const body = await r.text();
       assert.equal(r.status, 200, name);
       assert.ok(!body.includes(n.probe), `${name}: not in the answer`);
-      assert.match(body, /\[masked:/);
+      assert.match(body, /\[masked\]/);
       const d = await post(url, '/api/requests/req-0001/decision', live({ decision: { approver: C.castSecLead2, decision: 'approve', via: 'slack', comment: `ok ${n.raw}` } }), W(ws));
       const db = await d.text();
       assert.equal(d.status, 200); assert.ok(!db.includes(n.probe), `${name}: not in the decision answer`);
@@ -80,7 +80,7 @@ test('field names are not echoed either: an unknown key that is itself a credent
     for (const n of Object.values(NEEDLES)) {
       const r = await post(url, '/api/requests', live({ request: { ...spec(), [n.raw]: 1 } }));
       const t = await r.text();
-      assert.equal(r.status, 400); assert.ok(!t.includes(n.probe));
+      assert.ok([400, 413].includes(r.status), `${r.status}: a key over 80 characters is refused whole (413), any other unknown key is a 400`); assert.ok(!t.includes(n.probe));
       const p = await put(url, '/api/policies/pol-incident', live({ policy: { [n.raw]: 1 } }));
       assert.ok(!(await p.text()).includes(n.probe));
     }

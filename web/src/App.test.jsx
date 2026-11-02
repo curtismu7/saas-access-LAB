@@ -22,7 +22,7 @@ beforeAll(async () => {
   base = base.replace(/\/$/, "");
   globalThis.fetch = async (u, init = {}) => {
     const url = typeof u === "string" && u.startsWith("/") ? `${base}${u}` : u;
-    seen.push({ url: String(url), body: typeof init.body === "string" ? init.body : "" });
+    seen.push({ url: String(url), body: typeof init.body === "string" ? init.body : "", ws: init.headers?.["x-workspace"] });
     pending += 1;
     try {
       const own = override(String(url), init); if (own) return own;
@@ -37,6 +37,7 @@ afterAll(async () => { globalThis.fetch = realFetch; await new Promise((r) => se
 beforeEach(() => { cleanup(); forgetWorkspace(); seen = []; delay = () => 0; override = () => null; pending = 0; try { window.localStorage.clear(); window.sessionStorage.clear(); } catch { /* ignore */ } window.location.hash = ""; });
 
 const T = { timeout: 20000 };
+const REFUSED_ID = ["abcdefghijklmnop", "qrstuv12"].join(""); // passes the page's own rule; the server's masker refuses it
 const mount = async () => { render(<App />); await screen.findByTestId("scenarios", {}, T); };
 const tab = (name) => userEvent.click(screen.getByRole("tab", { name }));
 const click = (id) => userEvent.click(screen.getByTestId(id));
@@ -207,9 +208,26 @@ describe("Request tab (Live)", () => {
     expect(wholePageText()).not.toContain(secret);
     await tab("Approvals"); await screen.findByTestId("inbox", {}, T);
     expect(wholePageText()).not.toContain(secret);
-    expect(wholePageText()).toContain("[masked:github-token]");
+    expect(wholePageText()).toContain("[masked]");
     await tab("Timeline"); expect(wholePageText()).not.toContain(secret);
     expect(seen.some((s) => s.body.includes(secret))).toBe(true); // the visitor's own request carried it; nothing comes back
+  });
+
+  it("a stored workspace id the server refuses (400 bad_workspace) does not brick the tab: the page makes a new id, asks once more, and the lab works", async () => {
+    window.sessionStorage.setItem("sal.workspace", REFUSED_ID); // passes the page's own rule; the server's masker refuses it
+    await mount(); await live();
+    const first = seen.find((s) => s.url.includes("/api/state"));
+    expect(first.ws).toBe(REFUSED_ID);
+    const later = seen.filter((s) => s.ws && s.ws !== REFUSED_ID);
+    expect(later.length).toBeGreaterThan(0); expect(later.every((s) => /^w-[0-9a-f]{16}$/.test(s.ws))).toBe(true);
+    expect(window.sessionStorage.getItem("sal.workspace")).toMatch(/^w-[0-9a-f]{16}$/);
+    await submitDefault(); // a write works in the new workspace
+  });
+
+  it("a stored id that the page's own rule refuses (a credential-looking one) is never sent", async () => {
+    window.sessionStorage.setItem("sal.workspace", ["pw", "-hunter2xyz"].join(""));
+    await mount();
+    expect(seen.every((s) => !(s.ws || "").includes("hunter2xyz"))).toBe(true);
   });
 
   it("a refused request shows its reason and creates nothing (a duration that is not a whole number)", async () => {

@@ -1,60 +1,30 @@
-// Credential-shaped text. Anything a visitor types that looks like a token, a key, a password or key material is masked on the way IN
-// (reason, comment) so the raw value never enters state, a receipt, an outbox entry, a hop pane, a log line or an error.
-// Lab-written detectors; linear patterns only (no nested quantifiers), run on input capped at MAX_FREE characters.
-export const MAX_FREE = 400;
+// Masking for anything a visitor types that this lab keeps or shows back (a reason, a comment, an echoed request, a hop pane, an audit entry, a key name, a
+// path id). Typed text can carry a real credential, so it is masked on the way IN (what is stored) and again on the way OUT (every answer), and ALWAYS
+// before anything is cut or shown. This file is a thin adapter over the canonical shared masker (shared/mask.js, shared-masker 1.4.0); the detectors live
+// there and are described in its README ("Known limits"). THIS IS A HEURISTIC: it recognises common shapes, not every secret. Do not type a real
+// credential into a lab. The names below are the ones the rest of the app already imports.
+import { createMasker } from './shared/mask.js';
+import { OPAQUE_KEYS, opaqueHere } from './maskConfig.js';
 
-const D = (id, re) => ({ id, re });
-// Lab-written, heuristic detectors: they catch the common shapes, plain-language passwords and keys of 20 characters or more. Not every secret has a
-// recognisable shape (a short random password with no keyword before it is not found), and the page says so.
-export const DETECTORS = [
-  D('private-key', /-----BEGIN [A-Z0-9 ]{0,40}PRIVATE KEY(?: BLOCK)?-----[^]{0,4000}?(?:-----END [A-Z0-9 ]{0,40}PRIVATE KEY(?: BLOCK)?-----|$)/g),
-  D('url-userinfo', /\b[a-zA-Z][a-zA-Z0-9+.-]{1,20}:\/\/[^/\s:@]{1,100}:[^@\s]{1,200}@/g),
-  D('github-token', /\b(?:gh[pousr]_[A-Za-z0-9]{6,}|github_pat_[A-Za-z0-9_]{6,})/g),
-  D('gitlab-token', /\bglpat-[A-Za-z0-9_-]{6,}/g),
-  D('slack-token', /\bxox[abprs]-[A-Za-z0-9-]{6,}/g),
-  D('aws-key', /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/g),
-  D('google-token', /\b(?:ya29\.[A-Za-z0-9_-]{8,}|AIza[0-9A-Za-z_-]{20,})/g),
-  D('api-key', /\bsk-[A-Za-z0-9_-]{8,}/g),
-  D('jwt', /\beyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}/g),
-  D('bearer', /\b(?:Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{10,}/gi),
-  // "token abcdef1234567890" (an Authorization header): the word needs a digit, so "token requirements" is left alone
-  D('token-word', /\btoken\s+(?=[A-Za-z0-9._~+/=-]*\d)[A-Za-z0-9._~+/=-]{12,}/gi),
-  // a passphrase is several words: take the next four
-  D('passphrase', /\bpassphrase\s*(?:[:=]|\bis\b)\s*\S+(?:[ \t]+\S+){0,3}/gi),
-  D('assignment', /\b(?:password|passwd|pwd|pw|pass|secret(?:[ _-]?key)?|token|api[_-]?key|apikey|client[_-]?secret|private[_-]?key|access[_-]?key|account[_-]?key|session[_-]?id|sessionid|credential)s?\s*(?:[:=]|\bis\b)\s*\S{3,}/gi),
-  // A long run of key characters. Two detectors, both checked in code rather than with a look-ahead (to stay linear): a run of 20 or more of
-  // letters, digits, _ and - that has both a letter and a digit (or is 32 or more and is not just lowercase words joined by hyphens), and a run of 32 or
-  // more that also uses + / = (base64) unless it is a lowercase path such as a URL path.
-  { id: 'key-like', generic: true, re: /[A-Za-z0-9_-]{20,}/g, accept: (m) => (/\d/.test(m) && /[A-Za-z]/.test(m)) || (m.length >= 32 && !/^[a-z]+(?:-[a-z]+)+$/.test(m)) },
-  { id: 'long-blob', generic: true, re: /[A-Za-z0-9+/_=-]{32,}/g, accept: (m) => !/^[a-z0-9._-]+(?:\/[a-z0-9._-]+)+$/.test(m) && !/^[a-z]+(?:-[a-z]+)+$/.test(m) },
-];
+// One masker, plain mark "[masked]", the lab's own exceptions (maskConfig.js).
+export const masker = createMasker({ markStyle: 'plain', tooLongText: '[masked: text too long to check]', opaqueKeys: OPAQUE_KEYS, opaque: opaqueHere });
+export const { maskText, maskDeep, looksLikeCredential, isCredentialId } = masker;
 
-const MAX_SCAN = 200000;
-// Spans { start, end, id } of every credential-shaped run in the text.
-export function findCredentials(text) {
-  const t = String(text).slice(0, MAX_SCAN);
-  const spans = [];
-  for (const d of DETECTORS) { d.re.lastIndex = 0; for (const m of t.matchAll(d.re)) if (!d.accept || d.accept(m[0])) spans.push({ start: m.index, end: m.index + m[0].length, id: d.id }); }
-  return spans;
-}
+// A hit is reported as one range over the whole text: the shared masker answers "is there a credential", not where (the ranges are not part of its API).
+export const findCredentials = (input) => {
+  const s = typeof input === 'string' ? input : String(input ?? '');
+  return looksLikeCredential(s) ? [[0, s.length]] : [];
+};
 
-export function maskSpans(text, spans) {
-  const sorted = spans.filter((s) => s.end > s.start).sort((a, b) => a.start - b.start || b.end - a.end);
-  let out = ''; let at = 0;
-  for (const s of sorted) { if (s.start < at) { at = Math.max(at, s.end); continue; } out += `${text.slice(at, s.start)}[masked:${s.id}]`; at = s.end; }
-  return out + text.slice(at);
-}
+// Control characters and bidi controls (the ones that can reorder or hide what a reviewer reads) are deleted from stored text AFTER masking. Zero-width and
+// other format characters are left as typed: deleting them could join the pieces of a word the masker had no reason to mask into a new plain word (corpus
+// row L2146 "h<ZWSP>u<ZWSP>n..." is such a case), and the shared masker keeps the original text around a mask for the same reason. Tab, newline and carriage
+// return are kept here and collapse to one space below.
+const INVISIBLE = /[\p{Cc}\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/gu;
+const keepWhitespace = (ch) => (ch === '\t' || ch === '\n' || ch === '\r' ? ch : '');
 
-export function maskText(input) {
-  const text = String(input);
-  return text ? maskSpans(text, findCredentials(text)) : text;
-}
-
-// Free text from the visitor: zero-width and bidi characters DELETED (so a token cannot be hidden by interleaving them), other control characters
-// turned into spaces, credential-shaped runs masked, and only THEN cut to length (a token that straddles the cut is masked, not half shown).
-export function cleanFree(value, max = MAX_FREE) {
-  const flat = String(value ?? '').slice(0, MAX_SCAN).normalize('NFKC') // fullwidth look-alikes become the ASCII they imitate
-    .replace(/[\u00ad\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]/g, '')
-    .replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ');
-  return maskText(flat).replace(/\s+/g, ' ').trim().slice(0, max);
+// Free text from the visitor, as stored and shown: masked FIRST, then invisible characters deleted, whitespace collapsed. NOT cut to length: the caller
+// refuses an over-long input whole (the length is the length as typed), so nothing is silently dropped and a token never straddles a cut.
+export function cleanFree(value) {
+  return maskText(typeof value === 'string' ? value : String(value ?? '')).replace(INVISIBLE, keepWhitespace).replace(/\s+/gu, ' ').trim();
 }

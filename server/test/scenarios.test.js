@@ -51,7 +51,14 @@ test('Mock mode shows what the story says: self-approval refused with its reason
 
 test('the Mock table carries no credential-shaped text and no real host', async () => {
   const { findCredentials } = await import('../src/credentials.js'); const { scanHosts } = await import('../src/safety.js');
-  const t = JSON.stringify(MOCK_TABLE).replace(/"(hash|prevHash|head)":"[0-9a-f]{64}"/g, '');
-  assert.deepEqual(findCredentials(t), []);
-  assert.deepEqual(scanHosts(t), []);
+  // every string and every key on its own (hashes and trace ids are long and legitimate: skipped)
+  const found = []; const work = [[MOCK_TABLE, '']];
+  while (work.length) {
+    const [x, name] = work.pop();
+    if (typeof x === 'string') { if (!/^(hash|prevHash|head)$/.test(name) && findCredentials(x).length) found.push(x.slice(0, 40)); }
+    else if (Array.isArray(x)) for (const v of x) work.push([v, name]);
+    else if (x && typeof x === 'object') for (const [k, v] of Object.entries(x)) { if (findCredentials(k).length) found.push(k); work.push([v, k]); }
+  }
+  assert.deepEqual(found, []);
+  assert.deepEqual(scanHosts(JSON.stringify(MOCK_TABLE)), []);
 });
