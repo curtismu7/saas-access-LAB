@@ -22,19 +22,19 @@ const raw = (url, p, o = {}) => rawHttp(`${url}${p}`, { ...o, headers: { host: n
 
 test('E: a missing static file is a JSON 404, never 200 HTML; the shell answers only an extension-less, non-dotfile GET', async () => {
   await withDist(async (url) => {
-    for (const p of ['/assets/missing.js', '/favicon.ico', '/robots.txt', '/foo.map', '/foo.svg', '/sitemap.xml', '/.env', '/.git/config', '/a/b/c.css', '/foo.html', '/assets/.hidden', '/x/.well-known/y', '/index.html.bak', '/app.js']) {
+    for (const p of ['/assets/missing.js', '/favicon.ico', '/robots.txt', '/foo.map', '/foo.svg', '/sitemap.xml', '/.env', '/.git/config', '/a/b/c.css', '/foo.html', '/assets/.hidden', '/x/.well-known/y', '/index.html.bak', '/app.js', '/assets', '/assets/', '/static', '/static/x', '/api-docs.json']) {
       const r = await raw(url, p);
       assert.equal(r.status, 404, p); assert.match(r.headers['content-type'], /^application\/json/, p); assert.deepEqual(JSON.parse(r.text), NOT_FOUND, p);
       assert.ok(!r.text.includes(p.slice(1)) && !/<html|<pre>|Cannot GET/i.test(r.text), p);
     }
-    for (const p of ['/', '/foo', '/foo/bar', '/foo/', '/some-page', '/assets', '/assets/', '/a%20b']) {
+    for (const p of ['/', '/foo', '/foo/bar', '/foo/', '/some-page', '/a%20b', '/assetsx', '/apix']) {
       const r = await raw(url, p);
       assert.equal(r.status, 200, p); assert.match(r.headers['content-type'], /^text\/html/, p); assert.ok(r.text.includes('id="shell"'), p);
     }
     assert.equal((await raw(url, '/assets/app.js')).text, 'console.log(1)', 'a file that exists is served');
     assert.ok((await raw(url, '/index.html')).text.includes('id="shell"'), 'index.html itself is served');
     const head = await raw(url, '/foo', { method: 'HEAD' }); assert.equal(head.status, 200);
-    const dir = await raw(url, '/assets'); assert.ok(!dir.headers.location && !/Redirecting/.test(dir.text), 'a directory is not redirected (that page would echo the path)');
+    const dir = await raw(url, '/assets'); assert.equal(dir.status, 404, '/assets is not a page address (it was a 200 HTML shell before shared-masker 1.4.0 isPageAddress)'); assert.ok(!dir.headers.location && !/Redirecting/.test(dir.text), 'a directory is not redirected (that page would echo the path)');
     const bad = await raw(url, '/%E0%A4%A'); assert.equal(bad.status, 404, 'a path that does not decode is not a page'); assert.deepEqual(JSON.parse(bad.text), NOT_FOUND);
   });
 });

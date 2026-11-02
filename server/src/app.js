@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { hostCheck, sameOriginWrites } from './safety.js';
+import { buildMethodTable, charsetProblem, isPageAddress, methodNotAllowed } from './shared/hygiene.js';
 import { createHealth } from './health.js';
 import { loadCast, verticalFrom } from './cast.js';
 import { defaultMode, modeOf } from './config.js';
@@ -25,42 +26,66 @@ const CONFIG = process.env.CUSTOMER_CONFIG || path.resolve(HERE, '../../customer
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const TOO_BIG = 'a text (over 400 characters), a name (over 80), a list (over 20), an object (over 40 keys) or the nesting (over 6 levels) is more than the lab takes: nothing was run';
 
+// The one route table: path -> methods (":id" is one segment, case and one trailing slash are not significant, HEAD follows GET). It answers the 405 and
+// nothing else; the handlers below are registered once each, and a test checks that every route registered here is in the table and the other way round.
+export const ROUTES = {
+  '/api/health': ['GET'],
+  '/api/info': ['GET'],
+  '/api/story': ['GET'],
+  '/api/diagram': ['GET'],
+  '/api/state': ['GET'],
+  '/api/preview': ['POST'],
+  '/api/requests': ['POST'],
+  '/api/requests/:id/decision': ['POST'],
+  '/api/requests/:id/cancel': ['POST'],
+  '/api/clock': ['POST'],
+  '/api/reaper/run': ['POST'],
+  '/api/drift/reconcile': ['POST'],
+  '/api/drift/remediate': ['POST'],
+  '/api/platforms/out-of-band': ['POST'],
+  '/api/platforms/sync': ['POST'],
+  '/api/policies/:id': ['PUT'],
+  '/api/policies/:id/retire': ['POST'],
+  '/api/integrations': ['PUT'],
+  '/api/reset': ['POST'],
+};
+const METHODS = buildMethodTable(ROUTES);
+
 export function createApp({ health = createHealth(), configFile = CONFIG, workspaces = createWorkspaces(), table = MOCK_TABLE, webDist = WEB_DIST } = {}) {
   const app = express();
   app.disable('x-powered-by');
+  // 0. The response mask, first of all: everything that leaves through res.json (hops, echo, state, audit, errors) is passed through maskDeep, values AND object
+  //    keys, whatever path produced it. The input is never mutated.
+  app.use((_req, res, next) => { const send = res.json.bind(res); res.json = (b) => send(maskDeep(b)); next(); });
   app.use(hostCheck);
   app.use(sameOriginWrites);
   app.use((_req, res, next) => { res.set('X-Content-Type-Options', 'nosniff'); next(); });
+  // 1. Charset gate: any charset but utf-8 is a 415 with a fixed body. charsetProblem returns a fixed code, never the value, and nothing is logged.
+  app.use((req, res, next) => (charsetProblem(req.headers['content-type']) ? res.status(415).json({ error: 'unsupported_charset' }) : next()));
 
   const api = express.Router();
-  // The known routes and the methods each takes (filled in as they are registered below). A wrong method on a known route is a 405 with Allow, never a
-  // 404 that hides the route and never Express's HTML. HEAD follows GET.
-  const known = [];
-  const knows = (method, re) => known.push({ method, re });
+  // 2. A wrong method on a known route is a 405 with Allow, built from the one route table above (ROUTES), never a 404 that hides the route and never
+  //    Express's HTML. A path that is not in the table falls through to the JSON 404. HEAD follows GET.
   api.use((req, res, next) => {
-    const hits = known.filter((k) => k.re.test(req.path));
-    if (!hits.length) return next();
-    const allowed = [...new Set(hits.map((k) => k.method))];
-    if (allowed.includes(req.method) || (req.method === 'HEAD' && allowed.includes('GET'))) return next();
-    return res.set('Allow', allowed.includes('GET') ? 'GET, HEAD' : allowed.join(', ')).status(405).json({ error: 'method_not_allowed' });
+    const miss = methodNotAllowed(METHODS, req.method, `/api${req.path}`);
+    return miss ? res.set('Allow', miss.allow.join(', ')).status(405).json({ error: 'method_not_allowed' }) : next();
   });
-  knows('GET', /^\/health\/?$/i);
   api.use(express.json({ limit: '32kb' }));
-  // Defence in depth: every JSON answer is masked for credential-shaped values, whatever path produced it.
-  api.use((_req, res, next) => { const send = res.json.bind(res); res.json = (b) => send(maskDeep(b)); next(); });
   api.use('/health', health.router);
   const verticalOf = (req) => verticalFrom(req.body?.vertical ?? req.query.vertical);
   const castFor = (req) => loadCast(configFile, verticalOf(req));
   const noStore = (res) => res.set('Cache-Control', 'no-store');
-  const ws = (req, res) => { const id = workspaceFrom(req); if (!id) res.status(400).json({ error: 'bad_workspace' }); return id; };
+  // 3. The workspace id is checked BEFORE a slot exists: a refused id (credential-looking, see workspaces.js) is a 400 bad_workspace that echoes nothing.
+  //    Only the routes that use a workspace take this middleware; the slot itself is created later, by the engine call of a write.
+  const workspace = (req, res, next) => { const id = workspaceFrom(req); if (!id) return res.status(400).json({ error: 'bad_workspace' }); req.workspaceId = id; return next(); };
   const bodyOf = (req) => (isObj(req.body) ? req.body : {});
 
-  knows('GET', /^\/story\/?$/i); api.get('/story', (req, res) => { noStore(res); res.json(buildStory(castFor(req), verticalOf(req))); });
-  knows('GET', /^\/diagram\/?$/i); api.get('/diagram', (req, res) => { noStore(res); res.json(buildDiagram(castFor(req), DIAGRAM_NAMES.includes(req.query.name) ? req.query.name : DIAGRAM_NAMES[0])); });
-  knows('GET', /^\/info\/?$/i); api.get('/info', (_req, res) => { noStore(res); res.json({ mode: defaultMode(), modes: ['mock', 'live'], simulated: true, release: '2026-11-02', unverified: true }); });
+  api.get('/story', (req, res) => { noStore(res); res.json(buildStory(castFor(req), verticalOf(req))); });
+  api.get('/diagram', (req, res) => { noStore(res); res.json(buildDiagram(castFor(req), DIAGRAM_NAMES.includes(req.query.name) ? req.query.name : DIAGRAM_NAMES[0])); });
+  api.get('/info', (_req, res) => { noStore(res); res.json({ mode: defaultMode(), modes: ['mock', 'live'], simulated: true, release: '2026-11-02', unverified: true }); });
 
-  knows('GET', /^\/state\/?$/i); api.get('/state', (req, res) => {
-    const id = ws(req, res); if (!id) return;
+  api.get('/state', workspace, (req, res) => {
+    const id = req.workspaceId;
     noStore(res);
     const mode = modeOf(req.query.mode); if (!mode) return res.status(400).json({ error: 'bad_mode', detail: 'mode must be mock or live' });
     const vertical = verticalOf(req);
@@ -69,9 +94,8 @@ export function createApp({ health = createHealth(), configFile = CONFIG, worksp
   });
 
   // Read-only: the same checks and routing as a real request, creating nothing. Mock uses a fresh engine, Live the workspace's own.
-  knows('POST', /^\/preview\/?$/i);
-  api.post('/preview', (req, res) => {
-    const id = ws(req, res); if (!id) return;
+  api.post('/preview', workspace, (req, res) => {
+    const id = req.workspaceId;
     noStore(res);
     if (overBounds(req.body)) return res.status(413).json({ error: 'payload_too_large', detail: TOO_BIG });
     const body = bodyOf(req);
@@ -81,10 +105,9 @@ export function createApp({ health = createHealth(), configFile = CONFIG, worksp
   });
 
   // Every write: Live only, strict top-level keys, one trace, hops, and the whole fresh state back.
-  const write = (method, route, re, { op, keys, params }) => {
-    knows(method.toUpperCase(), re);
-    api[method](route, (req, res, next) => {
-      const id = ws(req, res); if (!id) return;
+  const write = (method, route, { op, keys, params }) => {
+    api[method](route, workspace, (req, res, next) => {
+      const id = req.workspaceId;
       noStore(res);
       try {
         if (!isObj(req.body)) return res.status(400).json({ error: 'bad_request' });
@@ -106,22 +129,21 @@ export function createApp({ health = createHealth(), configFile = CONFIG, worksp
     });
   };
   const idParam = (req) => (typeof req.params.id === 'string' ? req.params.id : '');
-  write('post', '/requests', /^\/requests\/?$/i, { op: 'request', keys: ['request'], params: (req) => req.body.request });
-  write('post', '/requests/:id/decision', /^\/requests\/[^/]+\/decision\/?$/i, { op: 'decide', keys: ['decision'], params: (req) => ({ ...(isObj(req.body.decision) ? req.body.decision : { __bad: 1 }), requestId: idParam(req) }) });
-  write('post', '/requests/:id/cancel', /^\/requests\/[^/]+\/cancel\/?$/i, { op: 'cancel', keys: ['by'], params: (req) => ({ requestId: idParam(req), by: req.body.by }) });
-  write('post', '/clock', /^\/clock\/?$/i, { op: 'advance', keys: ['clock'], params: (req) => (isObj(req.body.clock) ? req.body.clock : { __bad: 1 }) });
-  write('post', '/reaper/run', /^\/reaper\/run\/?$/i, { op: 'reap', keys: [], params: () => ({}) });
-  write('post', '/drift/reconcile', /^\/drift\/reconcile\/?$/i, { op: 'reconcile', keys: [], params: () => ({}) });
-  write('post', '/drift/remediate', /^\/drift\/remediate\/?$/i, { op: 'remediate', keys: ['findingId'], params: (req) => ({ findingId: req.body.findingId }) });
-  write('post', '/platforms/out-of-band', /^\/platforms\/out-of-band\/?$/i, { op: 'outOfBand', keys: ['change'], params: (req) => (isObj(req.body.change) ? req.body.change : { __bad: 1 }) });
-  write('post', '/platforms/sync', /^\/platforms\/sync\/?$/i, { op: 'setSync', keys: ['change'], params: (req) => req.body.change });
-  write('put', '/policies/:id', /^\/policies\/[^/]+\/?$/i, { op: 'updatePolicy', keys: ['policy'], params: (req) => ({ id: idParam(req), policy: req.body.policy }) });
-  write('post', '/policies/:id/retire', /^\/policies\/[^/]+\/retire\/?$/i, { op: 'retirePolicy', keys: [], params: (req) => ({ id: idParam(req) }) });
-  write('put', '/integrations', /^\/integrations\/?$/i, { op: 'updateIntegrations', keys: ['integrations'], params: (req) => req.body.integrations });
+  write('post', '/requests', { op: 'request', keys: ['request'], params: (req) => req.body.request });
+  write('post', '/requests/:id/decision', { op: 'decide', keys: ['decision'], params: (req) => ({ ...(isObj(req.body.decision) ? req.body.decision : { __bad: 1 }), requestId: idParam(req) }) });
+  write('post', '/requests/:id/cancel', { op: 'cancel', keys: ['by'], params: (req) => ({ requestId: idParam(req), by: req.body.by }) });
+  write('post', '/clock', { op: 'advance', keys: ['clock'], params: (req) => (isObj(req.body.clock) ? req.body.clock : { __bad: 1 }) });
+  write('post', '/reaper/run', { op: 'reap', keys: [], params: () => ({}) });
+  write('post', '/drift/reconcile', { op: 'reconcile', keys: [], params: () => ({}) });
+  write('post', '/drift/remediate', { op: 'remediate', keys: ['findingId'], params: (req) => ({ findingId: req.body.findingId }) });
+  write('post', '/platforms/out-of-band', { op: 'outOfBand', keys: ['change'], params: (req) => (isObj(req.body.change) ? req.body.change : { __bad: 1 }) });
+  write('post', '/platforms/sync', { op: 'setSync', keys: ['change'], params: (req) => req.body.change });
+  write('put', '/policies/:id', { op: 'updatePolicy', keys: ['policy'], params: (req) => ({ id: idParam(req), policy: req.body.policy }) });
+  write('post', '/policies/:id/retire', { op: 'retirePolicy', keys: [], params: (req) => ({ id: idParam(req) }) });
+  write('put', '/integrations', { op: 'updateIntegrations', keys: ['integrations'], params: (req) => req.body.integrations });
 
   // Reset clears this workspace's engines (requests, grants, receipts, platform state, outbox, audit, the clock) and nothing else.
-  knows('POST', /^\/reset\/?$/i);
-  api.post('/reset', (req, res) => { const id = ws(req, res); if (!id) return; noStore(res); workspaces.reset(id); return res.json({ reset: 'ok', workspace: id }); });
+  api.post('/reset', workspace, (req, res) => { const id = req.workspaceId; noStore(res); workspaces.reset(id); return res.json({ reset: 'ok', workspace: id }); });
   api.use((_req, res) => res.status(404).json({ error: 'not_found' }));
   app.use('/api', api);
 
@@ -132,24 +154,23 @@ export function createApp({ health = createHealth(), configFile = CONFIG, worksp
     return hasShell && req.path === '/' ? res.set('Allow', 'GET, HEAD').status(405).json({ error: 'method_not_allowed' }) : res.status(404).json({ error: 'not_found' });
   });
   if (hasShell) {
-    app.use(express.static(webDist, { redirect: false }));
-    // The app shell answers only a GET of an extension-less, non-dotfile path. A missing file (/assets/x.js, /favicon.ico, /robots.txt, /foo.map, /foo.svg,
-    // /sitemap.xml, /.env) is a JSON 404, never 200 HTML: a broken asset link must fail loudly.
-    app.get(/^\/(?!api(?:\/|$)).*/, (req, res, next) => {
-      let p; try { p = decodeURIComponent(req.path); } catch { return next(); }
-      const parts = p.split('/');
-      if (parts.at(-1).includes('.') || parts.some((x) => x.startsWith('.'))) return next();
-      return res.sendFile(path.join(webDist, 'index.html'));
-    });
+    // express.static answers real files only (dotfiles ignored, no directory index) and falls through otherwise.
+    app.use(express.static(webDist, { redirect: false, index: false, dotfiles: 'ignore', fallthrough: true }));
+    // 4. The app shell is for PAGE ADDRESSES only (isPageAddress, shared/hygiene.js): a GET or HEAD of a path with no extension, no dot segment, no empty
+    //    segment and not under assets/static/api. /assets, /assets/, /assets/x.js, /favicon.ico, /robots.txt, /foo.map, /.env, /% and /%zz are not page
+    //    addresses, so a missing asset is a JSON 404, never a 200 HTML page that a script would try to run.
+    app.use((req, res, next) => (isPageAddress(req.path) ? res.sendFile(path.join(webDist, 'index.html')) : next()));
   }
-  // The last two handlers catch everything that is left, for every method and every path: Express's default answers ("Cannot POST /<path>", or an
-  // HTML stack trace with file paths) would echo the path the visitor typed, which may be a token. Fixed JSON, no path.
+  // 5. The last two handlers catch everything that is left, for every method and every path: Express's default answers ("Cannot POST /<path>", or an
+  //    HTML stack trace with file paths) would echo the path the visitor typed, which may be a token. Fixed JSON, no path, no message, no stack, no log.
   app.use((_req, res) => res.status(404).json({ error: 'not_found' }));
   // eslint-disable-next-line no-unused-vars
   app.use((err, _req, res, _next) => {
     const status = Number(err?.status || err?.statusCode);
+    if (res.headersSent) return res.end();
     if (err instanceof InputError) return res.status(err.status).json({ error: err.code });
     if (status === 413) return res.status(413).json({ error: 'payload_too_large' });
+    if (status === 415) return res.status(415).json({ error: 'unsupported_charset' });
     if (status >= 400 && status < 500) return res.status(status).json({ error: 'bad_request' });
     return res.status(500).json({ error: 'internal_error' });
   });
