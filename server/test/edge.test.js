@@ -100,3 +100,21 @@ test('page fallback: only a page address gets the shell; /assets and /assets/ ar
     }, { webDist: dist });
   } finally { fs.rmSync(dist, { recursive: true, force: true }); }
 });
+
+test('the response mask is the last layer: a route that forgot to clean its input still answers masked values AND keys, errors included', async () => {
+  const express = (await import('express')).default;
+  const { startHttpServer } = await import('../src/app.js');
+  const secret = ['gh', 'p_', 'a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8'].join('');
+  // a health router that echoes what it was given, as a careless route would
+  const router = express.Router();
+  router.get('/', (req, res) => res.json({ echoed: req.query.q, [`k ${secret}`]: [secret, { nested: `x ${secret}` }], hash: 'f'.repeat(64) }));
+  router.get('/boom', (_req, _res, next) => next(new Error(`failed for ${secret}`)));
+  const { server, url } = await startHttpServer({ port: 0, host: '127.0.0.1', app: createApp({ health: { router, stop() {} } }) });
+  try {
+    const r = await (await fetch(`${url}api/health?q=${encodeURIComponent(`use ${secret} now`)}`)).text();
+    assert.ok(!r.includes(secret) && !r.includes('a1B2c3D4'), r);
+    assert.match(r, /"echoed":"use \[masked\] now"/); assert.ok(r.includes('f'.repeat(64)), 'an opaque name (hash) is left as written');
+    const e = await fetch(`${url}api/health/boom`); const t = await e.text();
+    assert.equal(e.status, 500); assert.deepEqual(JSON.parse(t), { error: 'internal_error' }); assert.ok(!t.includes(secret) && !t.includes('failed for'));
+  } finally { await new Promise((res) => server.close(res)); }
+});

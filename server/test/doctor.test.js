@@ -40,3 +40,14 @@ test('the settings file: absent is fine, a world-readable one is flagged, its va
     assert.equal((await runChecks({ env: { STANDALONE_ENV: f } })).find((x) => x.id === 'settings-file').level, 'pass');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('story-keys fails when ANY vertical\'s story holds a credential-shaped value (the response mask would change it)', async () => {
+  const { VERTICALS } = await import('../src/cast.js');
+  const keep = VERTICALS.health.castBrand;
+  try {
+    VERTICALS.health.castBrand = `Contoso ${['gh', 'p_', 'a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8'].join('')}`;
+    const c = (await runChecks({ env: { HOME: '/nonexistent' } })).find((x) => x.id === 'story-keys');
+    assert.equal(c.level, 'fail'); assert.match(c.detail, /credential-shaped/);
+  } finally { VERTICALS.health.castBrand = keep; }
+  assert.equal((await runChecks({ env: { HOME: '/nonexistent' } })).find((x) => x.id === 'story-keys').level, 'pass');
+});
