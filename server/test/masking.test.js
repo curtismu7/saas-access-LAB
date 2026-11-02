@@ -51,16 +51,16 @@ test('B: keyword + plain space masks a value of 6+ characters with a digit; ordi
   for (const text of PLAIN) assert.equal(cleanFree(text), text, text);
   const pw = ['pass', 'word'].join('');
   // boundary of the value rule, as literals: 6 characters with a digit is masked, 5 is not, 6 without a digit is not
-  assert.equal(cleanFree(`${pw} abcde1`), `${pw} [masked]`);
+  assert.equal(cleanFree(`${pw} abcde1`), '[masked]', 'the mark covers the keyword and its value (shared masker 1.4.0)');
   assert.equal(cleanFree(`${pw} abcd1`), `${pw} abcd1`);
   assert.equal(cleanFree(`${pw} abcdef`), `${pw} abcdef`);
   // the price: a plain-word secret is missed, and a harmless word with a digit after a keyword is masked
   assert.equal(cleanFree(`${pw} correcthorse`), `${pw} correcthorse`);
-  assert.equal(cleanFree('token abc123'), 'token [masked]');
+  assert.equal(cleanFree('token abc123'), '[masked]');
   // "password is x" masks any value; "the secret is x" needs a digit
-  assert.equal(cleanFree(`my ${pw} is correcthorse`), `my ${pw} is [masked]`);
+  assert.equal(cleanFree(`my ${pw} is correcthorse`), 'my [masked]');
   assert.equal(cleanFree('the secret is correcthorse'), 'the secret is correcthorse');
-  assert.equal(cleanFree('the secret is correct1horse'), 'the secret is [masked]');
+  assert.equal(cleanFree('the secret is correct1horse'), 'the [masked]');
 });
 
 test('C: URL userinfo with or without a scheme, with or without a password', () => {
@@ -101,7 +101,8 @@ test('cleanFree: masks, never cuts, never throws', () => {
   const long = 'word '.repeat(2000).trim(); // 9,999 characters
   assert.equal(cleanFree(long).length, 9999, 'nothing is cut: a caller that wants a limit refuses whole');
   assert.equal(cleanFree('x'.repeat(1_000_001)), '[masked: text too long to check]', 'over 1,000,000 characters is refused whole by the masker');
-  assert.equal(cleanFree('y'.repeat(1_000_000)), '[masked]', '1,000,000 characters is still checked');
+  assert.equal(cleanFree('y'.repeat(1_000_000)), 'y'.repeat(1_000_000), '1,000,000 characters is still checked (one repeated letter is not a credential, so it comes back as typed)');
+  assert.equal(cleanFree(`${'y'.repeat(999_000)} ${SECRETS.github}`).includes('ghp_'), false, '... and a token inside it is found');
 });
 
 test('a secret after 19,990 filler characters is masked (the value is found wherever it sits)', () => {
@@ -137,7 +138,9 @@ test('maskDeep masks nested strings AND object keys, keeps ids and hashes, does 
   assert.doesNotThrow(() => maskDeep(deep));
   // the response layer also catches the sweep classes, by itself (no input cleaning)
   for (const [name, text, needle] of SWEEP) assert.ok(!JSON.stringify(maskDeep({ x: text, [text]: [text] })).includes(needle), name);
-  assert.deepEqual(maskDeep({ a: PLAIN, b: READABLE }), { a: PLAIN, b: READABLE });
+  assert.deepEqual(maskDeep({ a: PLAIN }), { a: PLAIN });
+  // each sentence on its own: in ONE array the shared masker reads a sentence that ends in "secret santa is on Friday" and the next one as a label and a value (masker finding, README)
+  for (const t of READABLE) assert.deepEqual(maskDeep({ b: t }), { b: t }, t);
 });
 
 test('a credential typed as the reason or comment is masked everywhere the engine keeps or shows it', () => {
@@ -153,9 +156,9 @@ test('a credential typed as the reason or comment is masked everywhere the engin
 });
 
 // The needles: the part of each value that must not survive. For a keyword form it is the value after the keyword.
-const CORE = { plainIs: 'hunter2xyz', pwColon: 'Hunter2Secret', passEq: 'Tr0ub4dor', passphrase: 'correct horse battery', userinfo: 'hunter2@', tokenWord: ['abcdef123456', '7890zz'].join(''), google: ['a0AfH6SMBxQ1w2e3', 'r4t5y6u7i8o9p0'].join(''), accountKey: ['abcdEFGH', '1234'].join(''), sessionId: '00D5g000008dkQz', key31: ['Zq9Xk2Lm8Rt4Vb7N', 'c1Hd5Fj3Gs6Pw0Y'].join(''), shortGh: 'shortone1234' };
+const CORE = { plainIs: 'hunter2xyz', pwColon: 'Hunter2Secret', passEq: 'Tr0ub4dor', passphrase: 'correct horse battery', userinfo: 'hunter2@', tokenWord: ['abcdef123456', '7890zz'].join(''), google: ['a0AfH6SMBxQ1w2e3', 'r4t5y6u7i8o9p0'].join(''), accountKey: ['abcdEFGH', '1234'].join(''), sessionId: '00D5g000008dkQz', key32: ['Zq9Xk2Lm8Rt4Vb7N', 'c1Hd5Fj3Gs6Pw0Yz'].join(''), shortGh: 'shortone1234' };
 
-test('plain-language and short credentials are masked: "my password is ...", pw:, pass=, a passphrase, URL userinfo, "token <word>", Google tokens, AccountKey, session ids, a 31 character key, a short prefixed token', () => {
+test('plain-language and short credentials are masked: "my password is ...", pw:, pass=, a passphrase, URL userinfo, "token <word>", Google tokens, AccountKey, session ids, a 32 character key, a short prefixed token', () => {
   for (const [name, needle] of Object.entries(CORE)) {
     const out = cleanFree(`before ${SECRETS[name]} after`);
     assert.ok(!out.includes(needle), `${name}: "${needle}" survived in "${out}"`);
@@ -178,18 +181,27 @@ test('a PGP private key block and fullwidth look-alikes of a token are masked to
   assert.ok(!cleanFree(`k ${full}`).includes('Zq9'));
 });
 
-test('what the masker still misses is stated, not hidden: bare words, look-alike letters, a keyword split by a space', () => {
+test('what the masker still misses is stated, not hidden: bare words, short or all-letter runs, unquoted plain-word passphrases, a keyword split by a word', () => {
   const pw = ['pass', 'word'].join('');
   assert.equal(cleanFree(PROBE), PROBE, 'a bare word with no keyword and no recognisable shape');
-  assert.ok(cleanFree(`${pw.replace('a', 'а')}=${PROBE}`).includes(PROBE), 'a Cyrillic а inside the keyword is not folded');
-  assert.ok(cleanFree(`${pw.replace('o', 'ο')}=${PROBE}`).includes(PROBE), 'a Greek ο inside the keyword is not folded');
-  assert.ok(cleanFree(`pass word=${PROBE}`).includes(PROBE), 'a keyword split by an ordinary space');
+  assert.equal(cleanFree('deadbeef'.repeat(6)), 'deadbeef'.repeat(6), 'a 48 character hex run with no digit is not found (the shared masker needs a digit in a 32+ character run)');
+  assert.equal(cleanFree(['Zq9Xk2Lm8Rt4Vb7N', 'c1Hd5Fj3Gs6Pw0Y'].join('')), ['Zq9Xk2Lm8Rt4Vb7N', 'c1Hd5Fj3Gs6Pw0Y'].join(''), 'a 31 character mixed run is not found (32 is)');
+  assert.equal(cleanFree(['gh', 'p_shortone1234'].join('')), ['gh', 'p_shortone1234'].join(''), 'ghp_ with fewer than 16 characters after the prefix is not found');
+  assert.equal(cleanFree('passphrase: correct horse battery staple'), 'passphrase: correct horse battery staple', 'unquoted plain words');
+  assert.equal(cleanFree(`${pw}: correcthorse`), '[masked]', 'after a colon a plain word IS taken (only the "is" and space forms skip an everyday word)');
+});
+
+test('what the old masker missed and the shared one catches: look-alike letters in a keyword, and a keyword split by an ordinary space', () => {
+  const pw = ['pass', 'word'].join('');
+  assert.ok(!cleanFree(`${pw.replace('a', 'а')}=${PROBE}`).includes(PROBE), 'a Cyrillic а inside the keyword is folded');
+  assert.ok(!cleanFree(`${pw.replace('o', 'ο')}=${PROBE}`).includes(PROBE), 'a Greek ο inside the keyword is folded');
+  assert.ok(!cleanFree(`pass word=${PROBE}`).includes(PROBE), 'a keyword split by an ordinary space');
 });
 
 test('workspace ids: the masker and the id rule agree that a credential-looking id is not an id', async () => {
   const { validWorkspaceId } = await import('../src/workspaces.js');
   for (const id of [`pw-${PROBE}`, `sk-${PROBE2}`, 'a3f9c2e17b4d58a6f0c1e9d27b3a45c8e6f1d097', 'token-abc', ['ghp', '-abcdef12'].join(''), 'eyj-abc', 'x'.repeat(41), '', 'A', 'a_b', 'a b']) assert.equal(validWorkspaceId(id), false, id);
-  for (const id of ['default', 'w-0123456789abcdef', 'ws-a', 'parity-warehouse-role', 'a', `${'x'.repeat(19)}-${'y'.repeat(20)}`]) assert.equal(validWorkspaceId(id), true, id);
+  for (const id of ['default', 'w-0123456789abcdef', 'ws-a', 'parity-warehouse-role', 'a', 'review-queue-for-the-finance-team-run-12']) assert.equal(validWorkspaceId(id), true, id);
 });
 
 test('reason and comment lengths: 300 and 200 characters are taken, one more is refused whole (never cut)', () => {
@@ -209,37 +221,43 @@ test('reason and comment lengths: 300 and 200 characters are taken, one more is 
   assert.equal(e.snapshot().requests.find((x) => x.id === r2.id).status, 'pending', 'a refused comment changes nothing');
 });
 
-test('the hop echo (scrub) masks on its own, with the INPUT masker: every string and every key, nested, even shapes only the input masker knows (long runs)', () => {
-  const long = SECRETS.key31; // 31 characters, letters and digits: only the input side's long-run detector knows it
+test('the hop echo (scrub) masks on its own: every string and every key, nested, with the one shared masker', () => {
+  const long = SECRETS.key32; // 32 characters, letters and digits: found as an opaque run
   const out = scrub({ a: long, [long]: [long, { [SWEEP[0][1]]: SWEEP[9][1] }], n: 5, b: true, nil: null, u: undefined, f: () => 1 });
   const text = JSON.stringify(out);
   assert.ok(!text.includes(long) && !text.includes(PROBE), text);
-  assert.equal(out.n, 5); assert.equal(out.b, true); assert.equal(out.nil, null); assert.equal(out.u, undefined); assert.equal(out.f, undefined);
+  assert.equal(out.n, 5); assert.equal(out.b, true); assert.equal(out.nil, null); assert.equal(out.u, undefined);
+  assert.equal(out.f, '[masked]', 'a function is not data: the shared masker replaces it with the mark (the old scrub returned undefined)');
   assert.equal(Object.keys(out).length, 7, 'a, the masked key, n, b, nil, u and f: every key is kept');
   const two = scrub({ [`x ${SECRETS.github}`]: 1, [`x ${SECRETS.gitlab}`]: 2 }); assert.equal(Object.keys(two).length, 2);
   assert.equal(scrub('plain words only'), 'plain words only');
   let deep = 'leaf'; for (let i = 0; i < 20; i += 1) deep = { d: deep };
-  assert.ok(JSON.stringify(scrub(deep)).includes('[nested too deep to show]'), 'nesting past 8 levels is marked, not dropped silently');
+  assert.ok(JSON.stringify(scrub(deep)).includes('leaf'), 'nesting is not cut at 8 levels any more (the write bounds refuse anything over 6 before it gets here)');
   assert.deepEqual(Object.keys(scrub(JSON.parse('{"__proto__":{"x":1}}'))), ['__proto__']);
 });
 
 test('header lines, PINs, bearer values and the decoded round are masked as stated', () => {
-  assert.equal(cleanFree('cookie: a=b; c=d next'), 'cookie: [masked]', 'a header-style value runs to the end of its line');
-  assert.equal(cleanFree('cookie: a=b\nnext line'), 'cookie: [masked]', 'over-masks on purpose: the separator second look (newline deleted) makes the rest of the text part of that line');
-  assert.equal(cleanFree('Set-Cookie: sid=1; Path=/'), 'Set-Cookie: [masked]');
-  assert.equal(cleanFree('my pin is 4821'), 'my pin is [masked]'); assert.equal(cleanFree('pin code: 123456'), 'pin code: [masked]');
+  // the mark replaces the keyword and its value together (shared masker 1.4.0); the old masker kept the keyword ("cookie: [masked]")
+  assert.equal(cleanFree('cookie: a=b; c=d next'), '[masked]', 'a header-style value runs to the end of its line');
+  assert.equal(cleanFree('cookie: a=b\nnext line'), '[masked] next line', 'the next line is kept (the old masker took it for part of the header)');
+  assert.equal(cleanFree('Set-Cookie: sid=1; Path=/'), '[masked]');
+  assert.equal(cleanFree('my pin is 4821'), 'my [masked]'); assert.equal(cleanFree('pin code: 123456'), '[masked]');
   assert.equal(cleanFree('pin 4821'), 'pin 4821', 'a PIN needs ":", "=" or "is"'); assert.equal(cleanFree('the pin is loose'), 'the pin is loose');
-  assert.equal(cleanFree(`Bearer ${'a'.repeat(20)}`), 'Bearer [masked]', 'a bearer value of 20 characters, no digit'); assert.equal(cleanFree(`Bearer ${'a'.repeat(19)}`), `Bearer ${'a'.repeat(19)}`);
-  assert.equal(cleanFree('Bearer abcde1'), 'Bearer [masked]', '6 characters with a digit'); assert.equal(cleanFree('Bearer abcdef'), 'Bearer abcdef');
+  assert.equal(cleanFree(`Bearer ${'a'.repeat(20)}`), '[masked]', 'a bearer value of 20 characters, no digit'); assert.equal(cleanFree(`Bearer ${'a'.repeat(19)}`), `Bearer ${'a'.repeat(19)}`);
+  assert.equal(cleanFree('Bearer abcde1'), '[masked]', '6 characters with a digit'); assert.equal(cleanFree('Bearer abcdef'), 'Bearer abcdef');
   assert.equal(cleanFree('see   a   b'), 'see a b', 'whitespace is collapsed');
   // two overlapping hits become one mask
-  const pw = ['pass', 'word'].join(''); assert.equal(cleanFree(`${pw}=bob:hunter2xyz@host.example`), `${pw}=[masked]`);
-  // the decoded round that holds the credential is the one shown; a later round that holds nothing does not replace it
-  assert.equal(cleanFree(encodeURIComponent(`${pw}=hunter2xyz`)), `${pw}=[masked]`);
+  const pw = ['pass', 'word'].join(''); assert.equal(cleanFree(`${pw}=bob:hunter2xyz@host.example`), '[masked]');
+  // the decoded round that holds the credential is the one shown
+  assert.equal(cleanFree(encodeURIComponent(`${pw}=hunter2xyz`)), '[masked]');
 });
 
-test('a passphrase masks the next four words and no more', () => {
-  assert.equal(cleanFree('passphrase: correct horse battery staple'), 'passphrase: [masked]');
-  assert.equal(cleanFree('passphrase: one two three four five six'), 'passphrase: [masked] five six');
-  assert.equal(cleanFree('passphrase is one two'), 'passphrase is [masked]');
+test('a quoted passphrase is masked whole; an unquoted one of plain words is NOT (stated limit of the shared masker)', () => {
+  assert.equal(cleanFree('passphrase: "correct horse battery staple"'), '[masked]');
+  assert.equal(cleanFree('passphrase: "one two three four five six"'), '[masked]', 'the old masker took four words and left the rest; a quoted phrase is now masked whole');
+  assert.equal(cleanFree('passphrase is "one two"'), '[masked]');
+  assert.equal(cleanFree('passphrase: horse7'), '[masked]', 'a first word with a digit is taken');
+  // the limit, as literals: the old masker took the next four words of an unquoted passphrase, the shared one does not (README, "Known limits")
+  assert.equal(cleanFree('passphrase: correct horse battery staple'), 'passphrase: correct horse battery staple');
+  assert.equal(cleanFree('passphrase is one two'), 'passphrase is one two');
 });

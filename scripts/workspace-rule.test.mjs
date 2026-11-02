@@ -9,7 +9,7 @@ import { validWorkspaceId as page, freshId } from '../web/src/workspace.js';
 const HEX = 'a3f9c2e17b4d58a6f0c1e9d27b3a45c8e6f1d097';
 const TABLE = [
   ['default', true], ['w-0123456789abcdef', true], ['ws-a', true], ['a', true], ['parity-warehouse-role', true], ['passing-review', true], ['tokens-x', true], ['tab-1', true],
-  [`${'a'.repeat(19)}-${'b'.repeat(20)}`, true], ['x'.repeat(19) + '-' + 'y'.repeat(20), true],
+  ['review-queue-for-the-finance-team-run-12', true],
   ['pw-hunter2xyz', false], ['sk-abc', false], ['sk-abcdefghijklmnop1234', false], ['pass-x', false], ['token-x', false], ['secret-x', false], ['password', false], ['bearer-1', false], ['ghp-abc', false], ['glpat-abc', false],
   ['xoxb-1', false], ['akia-1', false], ['asia-1', false], ['apikey-1', false], ['pwd', false], ['passphrase-a', false], ['a-pk-b', false], ['rk-1', false],
   [HEX, false], [HEX.slice(0, 24), false], ['abcdefabcdefabcdefabcdef', false], ['abcdefabcdefabcdefabcde', true], ['eyjhbgcioijiuzi', false], ['eyhbgcioijiuzi', true], [`w-${HEX}`.slice(0, 40), false], ['eyjhbgcioijiuzi1nij9', false],

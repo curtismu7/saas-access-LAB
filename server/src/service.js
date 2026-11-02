@@ -2,29 +2,13 @@
 // trace and a list of hops (the raw request and response panes), with anything credential-shaped masked.
 import { Engine } from './engine.js';
 import { perform } from './actions.js';
-import { cleanFree } from './credentials.js';
+import { maskDeep } from './credentials.js';
 import { newTrace, formatTraceparent } from './trace.js';
 
-const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
-
-// A copy of the visitor's parameters that is safe to show: every string AND every object key masked, nothing else changed. Nothing is cut: a write whose
-// body is over a bound (bounds.js) is refused before it gets here, so what arrives is small enough to show whole. Depth-limited as a second guard.
-export function scrub(value, depth = 0) {
-  if (typeof value === 'string') return cleanFree(value);
-  if (depth > 8) return '[nested too deep to show]';
-  if (Array.isArray(value)) return value.map((v) => scrub(v, depth + 1));
-  if (isObj(value)) {
-    const out = {}; const used = new Set();
-    for (const k of Object.keys(value)) {
-      let nk = cleanFree(k); let n = 2;
-      while (used.has(nk)) { nk = `${cleanFree(k)}#${n}`; n += 1; }
-      used.add(nk);
-      Object.defineProperty(out, nk, { value: scrub(value[k], depth + 1), enumerable: true, writable: true, configurable: true });
-    }
-    return out;
-  }
-  return typeof value === 'number' || typeof value === 'boolean' || value === null ? value : undefined;
-}
+// A copy of the visitor's parameters that is safe to show: every string AND every object key masked by the shared masker (shared/mask.js through
+// credentials.js), nothing else changed. Nothing is cut: a write whose body is over a bound (bounds.js) is refused before it gets here, so what arrives is
+// small enough to show whole.
+export const scrub = (value) => maskDeep(value);
 
 export function mockState(table, vertical, scenarioId) {
   const v = table.verticals[vertical];
