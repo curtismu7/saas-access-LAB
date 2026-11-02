@@ -221,19 +221,24 @@ test('reason and comment lengths: 300 and 200 characters are taken, one more is 
   assert.equal(e.snapshot().requests.find((x) => x.id === r2.id).status, 'pending', 'a refused comment changes nothing');
 });
 
-test('the hop echo (scrub) masks on its own: every string and every key, nested, with the one shared masker', () => {
+test('the hop echo (scrub): known field names stay readable, every other key is the mark, every string is masked, nothing is dropped', () => {
   const long = SECRETS.key32; // 32 characters, letters and digits: found as an opaque run
-  const out = scrub({ a: long, [long]: [long, { [SWEEP[0][1]]: SWEEP[9][1] }], n: 5, b: true, nil: null, u: undefined, f: () => 1 });
+  const out = scrub({ reason: long, [long]: [long, { [SWEEP[0][1]]: SWEEP[9][1] }], minutes: 5, enabled: true, by: null, comment: undefined, level: () => 1 });
   const text = JSON.stringify(out);
   assert.ok(!text.includes(long) && !text.includes(PROBE), text);
-  assert.equal(out.n, 5); assert.equal(out.b, true); assert.equal(out.nil, null); assert.equal(out.u, undefined);
-  assert.equal(out.f, '[masked]', 'a function is not data: the shared masker replaces it with the mark (the old scrub returned undefined)');
-  assert.equal(Object.keys(out).length, 7, 'a, the masked key, n, b, nil, u and f: every key is kept');
-  const two = scrub({ [`x ${SECRETS.github}`]: 1, [`x ${SECRETS.gitlab}`]: 2 }); assert.equal(Object.keys(two).length, 2);
+  assert.deepEqual(Object.keys(out), ['reason', '[masked]', 'minutes', 'enabled', 'by', 'comment', 'level'], 'every key is kept: the unknown one as the mark');
+  assert.equal(out.reason, '[masked]'); assert.equal(out.minutes, 5); assert.equal(out.enabled, true); assert.equal(out.by, null); assert.equal(out.comment, undefined);
+  assert.equal(out.level, '[masked]', 'a function is not data: the shared masker replaces it with the mark');
+  assert.deepEqual(out['[masked]'][1], { '[masked]': '[masked]' }, 'a nested unknown key and its value');
+  const two = scrub({ [`x ${SECRETS.github}`]: 1, [`x ${SECRETS.gitlab}`]: 2, reason: 3 }); assert.deepEqual(Object.keys(two), ['[masked]', '[masked]#2', 'reason'], 'two unknown keys stay apart');
+  assert.deepEqual(Object.values(two), [1, 2, 3]);
+  // the masker cannot judge a one-character secret, so an unknown key is never echoed as typed
+  assert.deepEqual(Object.keys(scrub({ 'login: bob / x': 1, 'password - x': 2 })), ['[masked]', '[masked]#2']);
   assert.equal(scrub('plain words only'), 'plain words only');
-  let deep = 'leaf'; for (let i = 0; i < 20; i += 1) deep = { d: deep };
+  let deep = 'leaf'; for (let i = 0; i < 20; i += 1) deep = { request: deep };
   assert.ok(JSON.stringify(scrub(deep)).includes('leaf'), 'nesting is not cut at 8 levels any more (the write bounds refuse anything over 6 before it gets here)');
-  assert.deepEqual(Object.keys(scrub(JSON.parse('{"__proto__":{"x":1}}'))), ['__proto__']);
+  assert.deepEqual(Object.keys(scrub(JSON.parse('{"__proto__":{"x":1}}'))), ['[masked]'], '__proto__ is not a field of the lab');
+  assert.deepEqual(Object.keys(scrub(JSON.parse('{"request":{"__proto__":1,"reason":"x"}}')).request), ['[masked]', 'reason']);
 });
 
 test('header lines, PINs, bearer values and the decoded round are masked as stated', () => {

@@ -128,7 +128,10 @@ export function createApp({ health = createHealth(), configFile = CONFIG, worksp
       } catch (e) { return next(e); }
     });
   };
-  const idParam = (req) => (typeof req.params.id === 'string' ? req.params.id : '');
+  // A path id has a known shape (req-0001, pol-code-write). One that does not is never used or echoed as typed: it becomes the mark, and the engine answers
+  // its fixed 404 for an unknown id. (The masker cannot judge a one-character secret in a path; the shape can.)
+  const ID_SHAPE = /^[a-z0-9][a-z0-9-]{0,39}$/;
+  const idParam = (req) => (typeof req.params.id === 'string' && ID_SHAPE.test(req.params.id) ? req.params.id : '[masked]');
   write('post', '/requests', { op: 'request', keys: ['request'], params: (req) => req.body.request });
   write('post', '/requests/:id/decision', { op: 'decide', keys: ['decision'], params: (req) => ({ ...(isObj(req.body.decision) ? req.body.decision : { __bad: 1 }), requestId: idParam(req) }) });
   write('post', '/requests/:id/cancel', { op: 'cancel', keys: ['by'], params: (req) => ({ requestId: idParam(req), by: req.body.by }) });

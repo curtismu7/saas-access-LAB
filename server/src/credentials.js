@@ -16,9 +16,11 @@ export const findCredentials = (input) => {
   return looksLikeCredential(s) ? [[0, s.length]] : [];
 };
 
-// Control, bidi and other invisible format characters are deleted from stored text (the masker leaves a text that holds no credential exactly as typed, and
-// they can reorder or hide what a reviewer reads). Tab, newline and carriage return are kept here and collapse to one space below.
-const INVISIBLE = /[\p{Cc}\p{Cf}]/gu;
+// Control characters and bidi controls (the ones that can reorder or hide what a reviewer reads) are deleted from stored text AFTER masking. Zero-width and
+// other format characters are left as typed: deleting them could join the pieces of a word the masker had no reason to mask into a new plain word (corpus
+// row L2146 "h<ZWSP>u<ZWSP>n..." is such a case), and the shared masker keeps the original text around a mask for the same reason. Tab, newline and carriage
+// return are kept here and collapse to one space below.
+const INVISIBLE = /[\p{Cc}\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/gu;
 const keepWhitespace = (ch) => (ch === '\t' || ch === '\n' || ch === '\r' ? ch : '');
 
 // Free text from the visitor, as stored and shown: masked FIRST, then invisible characters deleted, whitespace collapsed. NOT cut to length: the caller
