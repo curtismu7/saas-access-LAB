@@ -4,7 +4,7 @@
       "id": "saas-access-lab",
       "name": "SaaS Access LAB",
       "kind": "Demo",
-      "description": "Just-in-time, time-bound access to GitHub, GitLab, Salesforce, Snowflake, Databricks and Google Workspace, with approval chains, self-approval blocked, a reaper that removes access on expiry, receipts, reference counting and nightly drift detection, the same for humans and agents: a simulation of the 2026-11-02 Ping release claims. Mock tables, or a Live local engine with a lab clock you move. Every product claim is UNVERIFIED on our tenant.",
+      "description": "Just-in-time, time-bound access to GitHub, GitLab, Salesforce, Snowflake, Databricks and Google Workspace, with approval chains, blocked self-approval, an expiry reaper, receipts and drift detection, for humans and agents. Mock or Live local. Simulates the 2026-11-02 release claims, UNVERIFIED.",
       "url": "http://localhost:7250",
       "healthPath": "/api/health",
       "composeFile": "saas-access-LAB/docker-compose.yml",
