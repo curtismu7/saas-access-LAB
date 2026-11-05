@@ -3,7 +3,7 @@
 A simulation of Ping's SaaS Access Management release claims: just-in-time, time-bound access to GitHub, GitLab, Salesforce, Snowflake, Databricks and Google Workspace, requested, approved, removed automatically when the window closes, with a receipt for every grant and nightly drift detection, the same for people and for agents.
 
 Tier: Demo
-Repo: https://github.com/ping-sandbox/saas-access-LAB
+Repo: https://github.com/curtismu7/saas-access-LAB
 Catalog: D104
 
 **Tier: Demo.** Source: the Ping ID4AI Workforce H2 2026 deck, slide 51 (and 35), release 2026-11-02. **Every product claim is a Ping release claim, UNVERIFIED on our tenant.** Nothing here calls a real platform, chat tool, ticket system, gateway, identity provider or tenant, and nothing leaves your machine.
@@ -75,7 +75,7 @@ The deck gives claims; the console swagger of 2026-10-31 (schema only) gives fie
 Prerequisites: Node 26 or newer. Docker only if you use the Docker form. Mock mode works with no setup at all: no tenant, no credentials, no settings file.
 
 ```
-git clone https://github.com/ping-sandbox/saas-access-LAB.git
+git clone https://github.com/curtismu7/saas-access-LAB.git
 cd saas-access-LAB
 npm ci
 npm run build
