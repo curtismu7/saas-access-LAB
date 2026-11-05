@@ -149,8 +149,8 @@ export function createApp({ health = createHealth(), configFile = CONFIG, worksp
 
   // Reset clears this workspace's engines (requests, grants, receipts, platform state, outbox, audit, the clock) and nothing else.
   api.post('/reset', workspace, (req, res) => { const id = req.workspaceId; noStore(res); workspaces.reset(id); return res.json({ reset: 'ok', workspace: id }); });
-  api.use((_req, res) => res.status(404).json({ error: 'not_found' }));
   app.get('/api/shelf', (_req, res) => { res.set('Cache-Control', 'no-store'); res.json(shelfInfo()); }); // the header "Shelf" button
+  api.use((_req, res) => res.status(404).json({ error: 'not_found' }));
   app.use('/api', api);
 
   // Outside /api only a GET or HEAD can succeed: a write to the page is 405 (Allow) on "/" and a JSON 404 anywhere else.
