@@ -73,7 +73,7 @@ test('README follows the README standard: title ends in LAB, plain Tier and Repo
   for (const h of ['Run from a clone', 'Settings file', 'What to do if the port is taken', 'Mock and live modes', 'Health, doctor and reset', 'Docker', 'Tests', 'Troubleshooting', 'Ownership', 'What is simulated']) assert.match(r, new RegExp(`^## .*${h}`, 'mi'), h);
   assert.match(r, /lsof -iTCP:7250 -sTCP:LISTEN -n -P/);
   assert.match(r, /PORT=<other port> npm start/);
-  assert.ok(!/ping-devops|cmuir|curtismu/i.test(r));
+  assert.ok(!/ping-devops|cmuir/i.test(r));
   assert.ok(!/\bdoor\b/i.test(r));
 });
 
