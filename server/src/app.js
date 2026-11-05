@@ -150,6 +150,7 @@ export function createApp({ health = createHealth(), configFile = CONFIG, worksp
   // Reset clears this workspace's engines (requests, grants, receipts, platform state, outbox, audit, the clock) and nothing else.
   api.post('/reset', workspace, (req, res) => { const id = req.workspaceId; noStore(res); workspaces.reset(id); return res.json({ reset: 'ok', workspace: id }); });
   api.use((_req, res) => res.status(404).json({ error: 'not_found' }));
+  app.get('/api/shelf', (_req, res) => { res.set('Cache-Control', 'no-store'); res.json(shelfInfo()); }); // the header "Shelf" button
   app.use('/api', api);
 
   // Outside /api only a GET or HEAD can succeed: a write to the page is 405 (Allow) on "/" and a JSON 404 anywhere else.
@@ -160,7 +161,6 @@ export function createApp({ health = createHealth(), configFile = CONFIG, worksp
   });
   if (hasShell) {
     // express.static answers real files only (dotfiles ignored, no directory index) and falls through otherwise.
-app.get('/api/shelf', (_req, res) => { res.set('Cache-Control', 'no-store'); res.json(shelfInfo()); }); // the header "Shelf" button
     app.use(express.static(webDist, { redirect: false, index: false, dotfiles: 'ignore', fallthrough: true }));
     // 4. The app shell is for PAGE ADDRESSES only (isPageAddress, shared/hygiene.js): a GET or HEAD of a path with no extension, no dot segment, no empty
     //    segment and not under assets/static/api. /assets, /assets/, /assets/x.js, /favicon.ico, /robots.txt, /foo.map, /.env, /% and /%zz are not page
