@@ -19,6 +19,7 @@ import { Engine } from './engine.js';
 import { liveState, mockState, runAction } from './service.js';
 import { maskDeep } from './mask.js';
 import { overBounds } from './bounds.js';
+import { shelfInfo } from './shelfLink.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIST = process.env.WEB_DIST || path.resolve(HERE, '../../web/dist');
@@ -29,6 +30,7 @@ const TOO_BIG = 'a text (over 400 characters), a name (over 80), a list (over 20
 // The one route table: path -> methods (":id" is one segment, case and one trailing slash are not significant, HEAD follows GET). It answers the 405 and
 // nothing else; the handlers below are registered once each, and a test checks that every route registered here is in the table and the other way round.
 export const ROUTES = {
+  '/api/shelf': ['GET'],
   '/api/health': ['GET'],
   '/api/info': ['GET'],
   '/api/story': ['GET'],
@@ -158,6 +160,7 @@ export function createApp({ health = createHealth(), configFile = CONFIG, worksp
   });
   if (hasShell) {
     // express.static answers real files only (dotfiles ignored, no directory index) and falls through otherwise.
+app.get('/api/shelf', (_req, res) => { res.set('Cache-Control', 'no-store'); res.json(shelfInfo()); }); // the header "Shelf" button
     app.use(express.static(webDist, { redirect: false, index: false, dotfiles: 'ignore', fallthrough: true }));
     // 4. The app shell is for PAGE ADDRESSES only (isPageAddress, shared/hygiene.js): a GET or HEAD of a path with no extension, no dot segment, no empty
     //    segment and not under assets/static/api. /assets, /assets/, /assets/x.js, /favicon.ico, /robots.txt, /foo.map, /.env, /% and /%zz are not page
