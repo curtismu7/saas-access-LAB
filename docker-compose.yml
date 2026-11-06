@@ -14,6 +14,7 @@ services:
       PORT: "7250"
       SALAB_BIND: 0.0.0.0
       SAL_LAB_MODE: ${SAL_LAB_MODE:-mock}
+      LAB_ALLOWED_HOSTS: ${LAB_ALLOWED_HOSTS:-saas-access-lab.local.ping-devops.com}
     read_only: true
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
