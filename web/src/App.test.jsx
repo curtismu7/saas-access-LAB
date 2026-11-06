@@ -38,10 +38,13 @@ beforeEach(() => { cleanup(); forgetWorkspace(); seen = []; delay = () => 0; ove
 
 const T = { timeout: 20000 };
 const REFUSED_ID = ["abcdefghijklmnop", "qrstuv12"].join(""); // passes the page's own rule; the server's masker refuses it
-const mount = async () => { render(<App />); await screen.findByTestId("scenarios", {}, T); };
+const mount = async () => { render(<App />); await screen.findByTestId(modeInUrl() ? "request-form" : "scenarios", {}, T); };
+const modeInUrl = () => { try { return window.localStorage.getItem("sal.mode") === "live"; } catch { return false; } };
 const tab = (name) => userEvent.click(screen.getByRole("tab", { name }));
 const click = (id) => userEvent.click(screen.getByTestId(id));
-const live = async () => { await click("mode-live"); await waitFor(() => expect(screen.getByTestId("banner")).toHaveTextContent(/LIVE mode/)); await screen.findByTestId("request-form", {}, T); await waitFor(() => expect(screen.getByTestId("reason")).toBeInTheDocument()); };
+// Rule 19: the toggle can no longer switch to Live (Real is refused by the server), so the Live-mode tests open the
+// page in Live directly, the way an owner does with SAL_LAB_MODE=live: the saved choice, read on load.
+const live = async () => { try { window.localStorage.setItem("sal.mode", "live"); } catch { /* ignore */ } await mount(); await screen.findByTestId("request-form", {}, T); await waitFor(() => expect(screen.getByTestId("reason")).toBeInTheDocument()); };
 const setValue = (id, value) => fireEvent.change(screen.getByTestId(id), { target: { value } });
 const pick = (id, value) => userEvent.selectOptions(screen.getByTestId(id), value);
 // Submit the default request (write on the core repository, 60 minutes, routed to the manager and then the owner).
@@ -84,21 +87,16 @@ describe("shell", () => {
     expect(BANNER_UNKNOWN).toMatch(/UNVERIFIED/);
   });
 
-  it("the banner and the mode chip follow the toggle, in both directions, on every tab", async () => {
+  it("rule 19: Real is off with the server's reason; the toggle is server-side and Mock always works", async () => {
     await mount();
-    await click("mode-live");
-    await waitFor(() => expect(screen.getByTestId("banner")).toHaveTextContent(/LIVE mode/));
-    expect(screen.getByTestId("mode")).toHaveTextContent("Mode: live");
-    for (const t of TABS) { await tab(t.label); expect(screen.getByTestId("banner")).toHaveTextContent(/LIVE mode/); expect(screen.getByTestId("banner")).toHaveAttribute("data-state", "live"); }
-    await click("mode-mock");
-    await waitFor(() => expect(screen.getByTestId("banner")).toHaveTextContent(/MOCK mode/));
-  });
-
-  it("the choice of mode is remembered, and a blocked storage never breaks the page", async () => {
-    await mount(); await click("mode-live");
-    await waitFor(() => expect(window.localStorage.getItem("sal.mode")).toBe("live"));
-    cleanup(); render(<App />);
-    await waitFor(() => expect(screen.getByTestId("banner")).toHaveTextContent(/LIVE mode/), T);
+    await waitFor(() => expect(screen.getByTestId("mode-live")).toHaveAttribute("aria-disabled", "true"), T);
+    expect(screen.getByTestId("mode-live").getAttribute("title")).toMatch(/Real \(live\) is not available in this lab/); // the how-to tooltip
+    await click("mode-live"); // aria-disabled: a press sends nothing and changes nothing
+    expect(screen.getByTestId("mode")).toHaveTextContent("Mode: mock");
+    expect(screen.getByTestId("banner")).toHaveAttribute("data-state", "mock");
+    await click("mode-mock"); // Mock always works and goes through the server
+    await waitFor(() => expect(seen.some((s) => s.url === `${base}/api/mode`)).toBe(true), T);
+    await waitFor(() => expect(screen.getByTestId("mode")).toHaveTextContent("Mode: mock"), T);
   });
 
   it("arrow keys move between tabs, and the URL hash follows", async () => {
@@ -112,7 +110,7 @@ describe("shell", () => {
   });
 
   it("talks only to its own origin", async () => {
-    await mount(); await live();
+    await mount();
     for (const t of TABS) await tab(t.label);
     expect(seen.length).toBeGreaterThan(3);
     expect(seen.every((s) => s.url.startsWith(base))).toBe(true);
@@ -157,7 +155,7 @@ describe("Mock mode: six scripted scenarios, read-only", () => {
 
 describe("Request tab (Live)", () => {
   it("shows the approval chain before anything is created, and the policy follows the level and the window", async () => {
-    await mount(); await live();
+    await live();
     await waitFor(() => expect(screen.getByTestId("preview-chain")).toHaveTextContent(/Needs 2 approval level/), T);
     expect(screen.getByTestId("policy")).toHaveValue("pol-code-write");
     await pick("level", "read"); setValue("duration", "60");
@@ -169,7 +167,7 @@ describe("Request tab (Live)", () => {
   });
 
   it("platform, resource and level selectors follow each other for all six platforms, and each shows its policy", async () => {
-    await mount(); await live();
+    await live();
     for (const [pid, first, level] of [["gitlab", "gl-group-platform", "guest"], ["salesforce", "sf-permset-reader", "assigned"], ["snowflake", "snow-role-analyst", "member"], ["databricks", "dbx-schema-gold", "SELECT"], ["google", "gw-role-helpdesk", "assigned"], ["github", "gh-repo-core", "read"]]) {
       await pick("platform", pid);
       await waitFor(() => expect(screen.getByTestId("resource")).toHaveValue(first), T);
@@ -182,7 +180,7 @@ describe("Request tab (Live)", () => {
   });
 
   it("an agent subject lists only agents and routes to its custodian", async () => {
-    await mount(); await live();
+    await live();
     await pick("subject-kind", "agent");
     await waitFor(() => expect(screen.getByTestId("subject")).toHaveValue(C.castAgent), T);
     expect(within(screen.getByTestId("subject")).getAllByRole("option").map((o) => o.value)).toEqual([C.castAgent, C.castAgent2]);
@@ -190,7 +188,7 @@ describe("Request tab (Live)", () => {
   });
 
   it("a request is created and shows up in the approvals inbox with the right approver and the hops", async () => {
-    await mount(); await live();
+    await live();
     await submitDefault();
     expect(screen.getByTestId("last-action")).toHaveTextContent(/POST \/api\/requests done/);
     expect(screen.getByTestId("hops")).toHaveTextContent(/traceparent/);
@@ -201,7 +199,7 @@ describe("Request tab (Live)", () => {
   });
 
   it("a credential typed as the reason is masked everywhere on the page, in the hops and in the request, and never comes back", async () => {
-    await mount(); await live();
+    await live();
     const secret = ["gh", "p_", "a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8"].join("");
     setValue("reason", `use ${secret} please`);
     await submitDefault();
@@ -215,7 +213,7 @@ describe("Request tab (Live)", () => {
 
   it("a stored workspace id the server refuses (400 bad_workspace) does not brick the tab: the page makes a new id, asks once more, and the lab works", async () => {
     window.sessionStorage.setItem("sal.workspace", REFUSED_ID); // passes the page's own rule; the server's masker refuses it
-    await mount(); await live();
+    await live();
     const first = seen.find((s) => s.url.includes("/api/state"));
     expect(first.ws).toBe(REFUSED_ID);
     const later = seen.filter((s) => s.ws && s.ws !== REFUSED_ID);
@@ -231,14 +229,14 @@ describe("Request tab (Live)", () => {
   });
 
   it("a refused request shows its reason and creates nothing (a duration that is not a whole number)", async () => {
-    await mount(); await live();
+    await live();
     setValue("duration", "0");
     await waitFor(() => expect(screen.getByTestId("preview-error")).toHaveTextContent(/expiry/), T);
     expect(screen.getByTestId("submit-request")).toBeDisabled();
   });
 
   it("a late chain preview for an earlier form never overwrites the newer one (stale-response guard)", async () => {
-    await mount(); await live();
+    await live();
     await waitFor(() => expect(screen.getByTestId("preview-chain")).toBeInTheDocument(), T);
     delay = (url, init) => (/preview/.test(url) && /"level":"read"/.test(init.body || "") ? 900 : 0);
     await pick("level", "read");           // slow answer, will arrive last
@@ -253,7 +251,7 @@ describe("Request tab (Live)", () => {
 
 describe("agents, denial and stale answers", () => {
   it("an agent asks for a Unity Catalog privilege and is auto-approved by policy; the grant is shown with its subject kind", async () => {
-    await mount(); await live();
+    await live();
     await pick("subject-kind", "agent");
     await waitFor(() => expect(screen.getByTestId("subject")).toHaveValue(C.castAgent), T);
     await pick("platform", "databricks");
@@ -271,7 +269,7 @@ describe("agents, denial and stale answers", () => {
   });
 
   it("a denied request leaves the inbox, shows as denied with who denied it, and cannot be approved afterwards", async () => {
-    await mount(); await live(); await submitDefault();
+    await live(); await submitDefault();
     await approveAs(C.castManager, "deny");
     await waitFor(() => expect(screen.getByTestId("decision-message")).toHaveTextContent(/req-0001: denied/), T);
     expect(screen.getByTestId("no-pending")).toBeInTheDocument();
@@ -294,7 +292,7 @@ describe("agents, denial and stale answers", () => {
   });
 
   it("a write answer for a mode the visitor has already left is not shown (stale write guard)", async () => {
-    await mount(); await live();
+    await live();
     await waitFor(() => expect(screen.getByTestId("submit-request")).toBeEnabled(), T);
     delay = (url, init) => (/\/api\/requests$/.test(url) && init.method === "POST" ? 800 : 0);
     await click("submit-request");
@@ -309,7 +307,7 @@ describe("agents, denial and stale answers", () => {
 
 describe("a write is a success only when the body says so (S7)", () => {
   it("a 200 whose body lacks ok is shown as a refusal, never as a success, and the page does not throw", async () => {
-    await mount(); await live(); await submitDefault();
+    await live(); await submitDefault();
     await tab("Approvals"); await screen.findByTestId("inbox", {}, T);
     override = (url, init) => (/\/decision$/.test(url) && init.method === "POST" ? new Response("{}", { status: 200, headers: { "content-type": "application/json" } }) : null);
     await waitFor(() => expect(screen.getByTestId("approve")).toBeEnabled(), T);
@@ -322,7 +320,7 @@ describe("a write is a success only when the body says so (S7)", () => {
   });
 
   it("a 200 with ok false (a refusal as data) is shown as a refusal with its reason; ok true is the only success", async () => {
-    await mount(); await live(); await submitDefault();
+    await live(); await submitDefault();
     await approveAs(C.castEngineer);
     expect(screen.getByTestId("decision-message")).toHaveAttribute("role", "alert");
     expect(screen.getByTestId("decision-message")).toHaveTextContent(/self_approval_refused/);
@@ -339,7 +337,7 @@ describe("a write is a success only when the body says so (S7)", () => {
 
 describe("explanations the reviewer asked for", () => {
   it("S4: a request whose levels share their only approver is refused up front in the form, with the reason in words, and cannot be submitted", async () => {
-    await mount(); await live();
+    await live();
     await pick("subject-kind", "agent");
     await pick("subject", C.castAgent2);
     await waitFor(() => expect(screen.getByTestId("preview-error")).toHaveTextContent(/different person at every level/), T);
@@ -347,14 +345,14 @@ describe("explanations the reviewer asked for", () => {
   });
 
   it("S5: the policy editor says that a waiting request keeps its chain and channel but is checked against the policy again at the last approval", async () => {
-    await mount(); await live();
+    await live();
     await userEvent.click(screen.getByText(/Edit the policy/));
     expect(screen.getByTestId("policy-editor")).toHaveTextContent(/keeps its approval chain and its chat channel/);
     expect(screen.getByTestId("policy-editor")).toHaveTextContent(/checked against the policy again when the last level approves/);
   });
 
   it("S1/S8: the wording does not overclaim masking, and Sync and Hitl are tagged as the lab's reading beside the behaviour", async () => {
-    await mount(); await live(); await tab("Platforms");
+    await live(); await tab("Platforms");
     await waitFor(() => expect(screen.getByTestId("platform-snowflake")).toBeInTheDocument(), T);
     expect(wholePageText()).toMatch(/not every secret has a recognisable shape/);
     expect(wholePageText()).not.toMatch(/a token or key typed anywhere is masked/);
@@ -368,7 +366,7 @@ describe("explanations the reviewer asked for", () => {
 
 describe("policy editor (Live)", () => {
   it("saves an edit that changes the next preview; a refused edit lists every reason; Retire removes the policy from the list", async () => {
-    await mount(); await live();
+    await live();
     await userEvent.click(screen.getByText(/Edit the policy/));
     await waitFor(() => expect(screen.getByTestId("pe-maxduration")).toBeEnabled(), T);
     setValue("pe-maxduration", "30");
@@ -385,7 +383,7 @@ describe("policy editor (Live)", () => {
   });
 
   it("every editable field is on the form: level, window, approval window, channel, distinct approvers, chain, auto-approve", async () => {
-    await mount(); await live();
+    await live();
     await userEvent.click(screen.getByText(/Edit the policy/));
     for (const id of ["pe-maxlevel", "pe-maxduration", "pe-ttl", "pe-channel", "pe-distinct", "pe-role-0", "pe-required-0", "pe-add", "pe-auto", "pe-auto-level", "pe-auto-duration", "pe-save", "pe-retire"]) expect(screen.getByTestId(id)).toBeInTheDocument();
     expect(screen.getByTestId("policy-editor")).not.toHaveTextContent(/self-approval.*(allow|permit)/i);
@@ -395,7 +393,7 @@ describe("policy editor (Live)", () => {
 
 describe("the whole cycle, in the UI: request, approve, refuse the wrong person, move the clock, reaped, then drift", () => {
   it("does it end to end", async () => {
-    await mount(); await live();
+    await live();
     await submitDefault();
     // the requester cannot approve their own request
     await approveAs(C.castEngineer);
@@ -476,7 +474,7 @@ describe("the other tabs", () => {
   });
 
   it("the Sync switch works in Live and changes whether the reconcile reads the platform", async () => {
-    await mount(); await live(); await tab("Drift");
+    await live(); await tab("Drift");
     await waitFor(() => expect(screen.getByTestId("oob-go")).toBeEnabled(), T);
     await pick("oob-platform", "snowflake"); await pick("oob-resource", "snow-role-writer");
     await click("oob-go"); await waitFor(() => expect(screen.getByTestId("drift-message")).toBeInTheDocument(), T);
@@ -489,7 +487,7 @@ describe("the other tabs", () => {
   });
 
   it("Integrations: the Hitl switches change who is told (no Slack message, a Jira ticket)", async () => {
-    await mount(); await live(); await tab("Approvals");
+    await live(); await tab("Approvals");
     await waitFor(() => expect(screen.getByTestId("ig-slack")).toBeEnabled(), T);
     await click("ig-slack");
     await waitFor(() => expect(screen.getByTestId("ig-slack")).not.toBeChecked(), T);
@@ -527,7 +525,7 @@ describe("the other tabs", () => {
   });
 
   it("the vertical switch reloads the cast: names change in the story, the roster and the form", async () => {
-    await mount(); await live();
+    await live();
     await userEvent.selectOptions(screen.getByTestId("vertical"), "health");
     await waitFor(() => expect(screen.getByTestId("subject")).toHaveValue(VERTICALS.health.castEngineer), T);
     await tab("Talk track");
@@ -537,7 +535,7 @@ describe("the other tabs", () => {
 
 describe("Reset", () => {
   it("clears requests, grants and the clock in Live and the page reloads; another workspace is not touched", async () => {
-    await mount(); await live(); await submitDefault();
+    await live(); await submitDefault();
     await tab("Timeline"); await waitFor(() => expect(screen.getByTestId("adv-60")).toBeEnabled(), T); await click("adv-60");
     await waitFor(() => expect(screen.getByTestId("clock")).toHaveTextContent("10:00"), T);
     await click("reset");

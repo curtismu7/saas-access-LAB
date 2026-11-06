@@ -33,6 +33,7 @@ export const ROUTES = {
   '/api/shelf': ['GET'],
   '/api/health': ['GET'],
   '/api/info': ['GET'],
+  '/api/mode': ['GET', 'POST'],
   '/api/story': ['GET'],
   '/api/diagram': ['GET'],
   '/api/state': ['GET'],
@@ -85,6 +86,17 @@ export function createApp({ health = createHealth(), configFile = CONFIG, worksp
   api.get('/story', (req, res) => { noStore(res); res.json(buildStory(castFor(req), verticalOf(req))); });
   api.get('/diagram', (req, res) => { noStore(res); res.json(buildDiagram(castFor(req), DIAGRAM_NAMES.includes(req.query.name) ? req.query.name : DIAGRAM_NAMES[0])); });
   api.get('/info', (_req, res) => { noStore(res); res.json({ mode: defaultMode(), modes: ['mock', 'live'], simulated: true, release: '2026-11-02', unverified: true }); });
+
+  // Rule 19: the Mock/Real toggle. Both modes here are simulated in this process (Live is a local engine, loopback only),
+  // so Real is honestly unavailable: the toggle still exists and switching to it is a 409 with the reason.
+  const REAL_UNAVAILABLE = 'Real (live) is not available in this lab: both modes are simulated in this process (Live is a local engine on loopback, with zero outbound calls), so there is no real platform to switch to. It stays in Mock.';
+  api.get('/mode', (_req, res) => { noStore(res); res.json({ source: 'mock', realAvailable: false, realReason: REAL_UNAVAILABLE }); });
+  api.post('/mode', (req, res) => {
+    const source = bodyOf(req).source;
+    if (source !== 'mock' && source !== 'real') return res.status(400).json({ error: 'bad_request', detail: 'source must be exactly "mock" or "real"' });
+    if (source === 'real') return res.status(409).json({ error: 'real_not_available', message: REAL_UNAVAILABLE });
+    res.json({ source: 'mock', realAvailable: false, realReason: REAL_UNAVAILABLE });
+  });
 
   api.get('/state', workspace, (req, res) => {
     const id = req.workspaceId;

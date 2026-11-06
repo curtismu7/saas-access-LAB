@@ -8,7 +8,7 @@ import DiagramTab from "./components/DiagramTab";
 import TalkTrack from "./components/TalkTrack";
 import LastAction from "./components/LastAction";
 import useLab from "./hooks/useLab";
-import { getJson, resetWorkspace } from "./api";
+import { getJson, getModeInfo, resetWorkspace, setMode } from "./api";
 import ShelfLink from "./components/ShelfLink.jsx";
 import { workspaceId } from "./workspace.js";
 
@@ -63,7 +63,19 @@ export default function App() {
     window.addEventListener("hashchange", on);
     return () => window.removeEventListener("hashchange", on);
   }, []);
-  const setMode = (m) => { setModeState(m); try { window.localStorage.setItem(MODE_KEY, m); } catch { /* storage blocked */ } };
+  const setModeLocal = (m) => { setModeState(m); try { window.localStorage.setItem(MODE_KEY, m); } catch { /* storage blocked */ } };
+  // Rule 19: the toggle is server-side (POST /api/mode). Real is unavailable here, so its button is off with the
+  // server's reason; Mock is the only switch that goes through, and the lab reloads its data after it.
+  const [modeInfo, setModeInfo] = useState(null);
+  useEffect(() => { getModeInfo().then((r) => setModeInfo(r.ok ? r.body : null)).catch(() => setModeInfo(null)); }, []);
+  const switchMode = async (source) => {
+    if (source === "real" && modeInfo?.realAvailable === false) return; // aria-disabled: a press does nothing
+    const r = await setMode(source);
+    if (!r.ok) return; // a 409 is shown by the disabled button's tooltip; nothing else to say
+    setModeLocal(r.body?.source === "real" ? "live" : "mock");
+    setResetSignal((n) => n + 1);
+    await lab.reload();
+  };
   const pickTheme = (next) => {
     try { if (next === "auto") localStorage.removeItem(THEME_KEY); else localStorage.setItem(THEME_KEY, next); } catch { /* not remembered */ }
     setTheme(next);
@@ -118,9 +130,11 @@ export default function App() {
           </div>
           <div className="head__tools">
             <ShelfLink headers={() => ({ "x-workspace": workspaceId() })} />
-            <div className="seg" role="group" aria-label="Mode">
-              <button type="button" aria-pressed={mode === "mock"} onClick={() => setMode("mock")} data-testid="mode-mock">Mock</button>
-              <button type="button" aria-pressed={mode === "live"} onClick={() => setMode("live")} data-testid="mode-live">Live</button>
+            <div className="seg mode-toggle" role="group" aria-label="Mode">
+              <button type="button" aria-pressed={mode === "mock"} onClick={() => switchMode("mock")} data-testid="mode-mock">Mock</button>
+              <button type="button" aria-pressed={mode === "live"} aria-disabled={modeInfo?.realAvailable === false ? "true" : undefined}
+                title={modeInfo?.realAvailable === false ? (modeInfo.realReason || undefined) : undefined}
+                onClick={() => switchMode("live")} data-testid="mode-live">Live</button>
             </div>
             <span className="chip" data-testid="mode">Mode: {mode || "..."}{mode === "live" ? " (local engine, loopback)" : mode === "mock" ? " (tables)" : ""}</span>
             {!presenter && (

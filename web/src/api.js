@@ -17,3 +17,12 @@ export const postJson = (url, payload) => sendJson("POST", url, payload);
 export const putJson = (url, payload) => sendJson("PUT", url, payload);
 
 export const resetWorkspace = () => workspaceFetch("/api/reset", { method: "POST", body: "{}" }).then((r) => r.ok);
+
+// Rule 19: the server-side Mock/Real toggle. Returns { ok, status, body } and never throws on 409.
+export const getModeInfo = async () => {
+  const r = await workspaceFetch("/api/mode", { method: "GET" });
+  let body = {};
+  try { body = await r.json(); } catch { /* not JSON */ }
+  return { ok: r.ok, status: r.status, body };
+};
+export const setMode = (source) => sendJson("POST", "/api/mode", { source });

@@ -95,3 +95,6 @@ summary { cursor: pointer; font-weight: 700; font-size: 14px; }
 
 .shell-theme { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text); }
 .shell-theme select { min-height: 32px; padding: 4px 8px; }
+
+/* Rule 19: the Mock/Real toggle. */
+.mode-toggle button[aria-disabled="true"] { opacity: 0.6; cursor: not-allowed; }

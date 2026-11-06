@@ -45,7 +45,7 @@ test('415: a charset other than utf-8 is a fixed 415 that echoes and logs nothin
   assert.ok(!logged.includes(PROBE), 'nothing typed was written to stdout or stderr');
 });
 
-test('the route table and the registered routes are the same set (20 routes, no extra, none missing)', () => {
+test('the route table and the registered routes are the same set (22 routes, no extra, none missing)', () => {
   const app = createApp({ health: createHealth({ runChecks: async () => [], intervalMs: 3_600_000 }) });
   const apiLayer = app._router.stack.find((l) => l.name === 'router' && l.regexp.test('/api/state'));
   assert.ok(apiLayer, 'the /api router is mounted');
@@ -55,7 +55,7 @@ test('the route table and the registered routes are the same set (20 routes, no 
   registered.add('GET /api/shelf'); // app-level: serves the header "Shelf" button before the router's catch-all
   const table = new Set();
   for (const [p, methods] of Object.entries(ROUTES)) for (const m of methods) table.add(`${m} ${p}`);
-  assert.equal(table.size, 20);
+  assert.equal(table.size, 22);
   assert.deepEqual([...registered].sort(), [...table].sort());
 });
 
