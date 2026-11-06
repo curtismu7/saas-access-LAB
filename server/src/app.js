@@ -20,6 +20,7 @@ import { liveState, mockState, runAction } from './service.js';
 import { maskDeep } from './mask.js';
 import { overBounds } from './bounds.js';
 import { shelfInfo } from './shelfLink.js';
+import { aiGuardConfig, sendToAiGuard } from './aiguardProbe.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIST = process.env.WEB_DIST || path.resolve(HERE, '../../web/dist');
@@ -51,6 +52,7 @@ export const ROUTES = {
   '/api/policies/:id/retire': ['POST'],
   '/api/integrations': ['PUT'],
   '/api/reset': ['POST'],
+  '/api/privilege-check': ['POST'],
 };
 const METHODS = buildMethodTable(ROUTES);
 
@@ -160,6 +162,23 @@ export function createApp({ health = createHealth(), configFile = CONFIG, worksp
   write('put', '/integrations', { op: 'updateIntegrations', keys: ['integrations'], params: (req) => req.body.integrations });
 
   // Reset clears this workspace's engines (requests, grants, receipts, platform state, outbox, audit, the clock) and nothing else.
+  // Live Privilege check: send one text through the tenant's AI Guard and return the
+  // gateway's own decision. Refused with a clear 503 when Real mode is not configured.
+  api.post('/privilege-check', workspace, async (req, res, next) => {
+    try {
+      const cfg = aiGuardConfig();
+      if (!cfg.configured) return res.status(503).json({ error: 'privilege_not_configured', message: 'Real mode is not configured: set CENTRAL_AGENT_A2A_URL and CENTRAL_AGENT_A2A_BEARER in the shared settings file.' });
+      const text = typeof req.body?.text === 'string' ? req.body.text : '';
+      if (!text.trim()) return res.status(400).json({ error: 'bad_request', message: 'text is required' });
+      if (text.length > 4000) return res.status(400).json({ error: 'bad_request', message: 'text over the 4000-character gateway limit' });
+      const answer = await sendToAiGuard({ text, cfg, source: 'saas-access-lab' });
+      return res.json({ workspace: req.workspaceId, status: answer.status, mapped: answer.mapped, raw: answer.raw });
+    } catch (e) {
+      if (e?.name === 'TimeoutError' || /timeout/i.test(String(e?.message))) return res.status(504).json({ error: 'gateway_timeout', message: 'the gateway did not answer in time' });
+      return next(e);
+    }
+  });
+
   api.post('/reset', workspace, (req, res) => { const id = req.workspaceId; noStore(res); workspaces.reset(id); return res.json({ reset: 'ok', workspace: id }); });
   app.get('/api/shelf', (_req, res) => { res.set('Cache-Control', 'no-store'); res.json(shelfInfo()); }); // the header "Shelf" button
   api.use((_req, res) => res.status(404).json({ error: 'not_found' }));

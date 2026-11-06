@@ -15,6 +15,10 @@ services:
       SALAB_BIND: 0.0.0.0
       SAL_LAB_MODE: ${SAL_LAB_MODE:-mock}
       LAB_ALLOWED_HOSTS: ${LAB_ALLOWED_HOSTS:-saas-access-lab.local.ping-devops.com}
+    # Real mode's AI Gateway endpoint + bearer come from the shared settings file (rule 19/94).
+    env_file:
+      - path: ${STANDALONE_ENV:-/Users/cmuir/Development/.env}
+        required: false
     read_only: true
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
