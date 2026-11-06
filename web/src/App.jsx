@@ -26,6 +26,12 @@ const TAIL = "Every product claim is a Ping release claim, UNVERIFIED on our ten
 export const BANNER_UNKNOWN = `SIMULATED, MOCK or LIVE mode (loopback only, no outbound network). ${TAIL}`;
 const PRESENTER_TALK = { request: ["say-first", "request"], approvals: ["approve"], timeline: ["time-bound", "receipts"], drift: ["drift"], platforms: ["one-model"], diagram: ["why-saas-access"] };
 const MODE_KEY = "sal.mode";
+const THEME_KEY = "sal.theme";
+const THEMES = [["auto", "Auto"], ["light", "Light"], ["dark", "Dark"]];
+function initialTheme() {
+  try { const t = localStorage.getItem(THEME_KEY); if (t === "light" || t === "dark") return t; } catch { /* storage blocked */ }
+  return "auto";
+}
 
 const tabFromHash = () => { const h = window.location.hash.replace("#", ""); return TABS.some((t) => t.id === h) ? h : "request"; };
 const savedMode = () => { try { const m = window.localStorage.getItem(MODE_KEY); return m === "live" || m === "mock" ? m : null; } catch { return null; } };
@@ -40,8 +46,11 @@ export default function App() {
   const [presenter, setPresenter] = useState(false);
   const [resetSignal, setResetSignal] = useState(0);
   const [resetMsg, setResetMsg] = useState("");
+  const [theme, setTheme] = useState(initialTheme);
   const tabsRef = useRef(null);
   const lab = useLab({ mode, vertical, scenario: scenarioId });
+
+  useEffect(() => { if (theme === "auto") delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = theme; }, [theme]);
 
   useEffect(() => { getJson("/api/info").then((i) => setModeState((m) => m || savedMode() || i.mode), () => setModeState((m) => m || savedMode() || "mock")); }, []);
   useEffect(() => {
@@ -55,6 +64,10 @@ export default function App() {
     return () => window.removeEventListener("hashchange", on);
   }, []);
   const setMode = (m) => { setModeState(m); try { window.localStorage.setItem(MODE_KEY, m); } catch { /* storage blocked */ } };
+  const pickTheme = (next) => {
+    try { if (next === "auto") localStorage.removeItem(THEME_KEY); else localStorage.setItem(THEME_KEY, next); } catch { /* not remembered */ }
+    setTheme(next);
+  };
   const select = (id) => { setTab(id); try { window.history.replaceState(null, "", `#${id}`); } catch { /* ignore */ } };
 
   // Keep the active tab fully in view in the scrolling tab strip (375px).
@@ -117,6 +130,11 @@ export default function App() {
                 </select>
               </label>
             )}
+            <label className="shell-theme">Theme
+              <select value={theme} onChange={(e) => pickTheme(e.target.value)}>
+                {THEMES.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+              </select>
+            </label>
             <button type="button" onClick={reset} data-testid="reset">Reset</button>
             <button type="button" aria-pressed={presenter} onClick={() => setPresenter((v) => !v)} data-testid="presenter">{presenter ? "Exit presenter (Esc)" : "Presenter (P)"}</button>
           </div>

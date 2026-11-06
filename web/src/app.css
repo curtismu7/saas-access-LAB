@@ -92,3 +92,6 @@ summary { cursor: pointer; font-weight: 700; font-size: 14px; }
 
 .last { margin-top: 12px; }
 .tag { margin: 2px 4px 2px 0; }
+
+.shell-theme { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text); }
+.shell-theme select { min-height: 32px; padding: 4px 8px; }
