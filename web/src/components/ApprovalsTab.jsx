@@ -15,7 +15,7 @@ function Pending({ r, actor, via, comment, onDecide, disabled }) {
       {r.approval.ApprovedBy.length > 0 && <p className="muted">Approved so far: {r.approval.ApprovedBy.map((a) => `${a.id} (level ${a.level + 1}, ${a.via})`).join(", ")}</p>}
       <p className="muted">{mine ? (mine.allowed ? `${actor} is routed to this level and may act.` : `${actor} is routed to this level but is ${mine.reason === "requester" ? "the requester" : mine.reason === "subject" ? "the subject" : "not human"}: the lab will refuse.`) : `${actor} is not routed to this level: the lab will refuse.`}</p>
       <div className="seg">
-        <button type="button" className="primary" disabled={disabled} onClick={() => onDecide(r.id, "approve", via, comment)} data-testid="approve">Approve as {actor}</button>
+        <button type="button" disabled={disabled} onClick={() => onDecide(r.id, "approve", via, comment)} data-testid="approve">Approve as {actor}</button>
         <button type="button" disabled={disabled} onClick={() => onDecide(r.id, "deny", via, comment)} data-testid="deny">Deny as {actor}</button>
       </div>
     </li>
@@ -55,6 +55,7 @@ export default function ApprovalsTab({ story, mode, lab }) {
           <label>Comment (optional)
             <input value={comment} maxLength={200} onChange={(e) => setComment(e.target.value)} data-testid="comment" />
           </label>
+          <button type="button" className="primary" disabled={disabled} onClick={() => lab.reload()} data-testid="refresh-approvals">Refresh</button>
         </div>
         {message && <p className={message.ok ? "lesson" : "field-error"} role={message.ok ? "status" : "alert"} data-testid="decision-message">{visible(message.text)}</p>}
         {mode !== "live" && <p className="muted">Mock is read-only: the buttons are off. Switch to Live to approve.</p>}
