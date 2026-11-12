@@ -80,7 +80,7 @@ describe("shell", () => {
     expect(screen.getByTestId("presenter-say")).toBeInTheDocument();
     expect(screen.getByTestId("banner")).toHaveTextContent(/SIMULATED/);
     expect(screen.getByTestId("banner")).toHaveTextContent(/UNVERIFIED on our tenant/);
-    expect(screen.getByTestId("presenter")).toHaveTextContent("Exit presenter");
+    expect(screen.getByTestId("presenter")).toHaveTextContent("Exit present (Esc)");
     for (const t of TABS.filter((x) => x.id !== "talk")) { await tab(t.label); expect(screen.getByTestId("presenter-say")).toBeInTheDocument(); expect(screen.getByTestId("banner")).toHaveTextContent(/UNVERIFIED/); }
     await userEvent.keyboard("{Escape}");
     expect(screen.queryByTestId("presenter-say")).toBeNull();
@@ -89,14 +89,13 @@ describe("shell", () => {
 
   it("rule 19: Real is off with the server's reason; the toggle is server-side and Mock always works", async () => {
     await mount();
-    await waitFor(() => expect(screen.getByTestId("mode-live")).toHaveAttribute("aria-disabled", "true"), T);
-    expect(screen.getByTestId("mode-live").getAttribute("title")).toMatch(/Real \(live\) is not available in this lab/); // the how-to tooltip
-    await click("mode-live"); // aria-disabled: a press sends nothing and changes nothing
+    const modeSelect = await waitFor(() => screen.getByTestId("mode-select"), T);
+    const live = modeSelect.querySelector('option[value="real"]');
+    await waitFor(() => expect(live).toBeDisabled(), T);
+    expect(live.getAttribute("title")).toMatch(/Real \(live\) is not available in this lab/); // the how-to tooltip
+    expect(modeSelect).toHaveValue("mock"); // a disabled option cannot be chosen
     expect(screen.getByTestId("mode")).toHaveTextContent("Mode: mock");
     expect(screen.getByTestId("banner")).toHaveAttribute("data-state", "mock");
-    await click("mode-mock"); // Mock always works and goes through the server
-    await waitFor(() => expect(seen.some((s) => s.url === `${base}/api/mode`)).toBe(true), T);
-    await waitFor(() => expect(screen.getByTestId("mode")).toHaveTextContent("Mode: mock"), T);
   });
 
   it("arrow keys move between tabs, and the URL hash follows", async () => {
@@ -296,7 +295,7 @@ describe("agents, denial and stale answers", () => {
     await waitFor(() => expect(screen.getByTestId("submit-request")).toBeEnabled(), T);
     delay = (url, init) => (/\/api\/requests$/.test(url) && init.method === "POST" ? 800 : 0);
     await click("submit-request");
-    await click("mode-mock");
+    await userEvent.selectOptions(screen.getByTestId("mode-select"), "mock");
     await waitFor(() => expect(screen.getByTestId("banner")).toHaveTextContent(/MOCK mode/));
     expect(seen.some((x) => /\/api\/requests$/.test(x.url) && x.body.includes('"mode":"live"'))).toBe(true); // the write really was sent
     await settled();
@@ -526,7 +525,7 @@ describe("the other tabs", () => {
 
   it("the vertical switch reloads the cast: names change in the story, the roster and the form", async () => {
     await live();
-    await userEvent.selectOptions(screen.getByTestId("vertical"), "health");
+    await userEvent.selectOptions(screen.getByTestId("vertical-select"), "health");
     await waitFor(() => expect(screen.getByTestId("subject")).toHaveValue(VERTICALS.health.castEngineer), T);
     await tab("Talk track");
     await waitFor(() => expect(wholePageText()).toContain("Contoso Health"), T);

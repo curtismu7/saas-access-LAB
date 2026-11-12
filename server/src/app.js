@@ -87,7 +87,13 @@ export function createApp({ health = createHealth(), configFile = CONFIG, worksp
 
   api.get('/story', (req, res) => { noStore(res); res.json(buildStory(castFor(req), verticalOf(req))); });
   api.get('/diagram', (req, res) => { noStore(res); res.json(buildDiagram(castFor(req), DIAGRAM_NAMES.includes(req.query.name) ? req.query.name : DIAGRAM_NAMES[0])); });
-  api.get('/info', (_req, res) => { noStore(res); res.json({ mode: defaultMode(), modes: ['mock', 'live'], simulated: true, release: '2026-11-02', unverified: true }); });
+  api.get('/info', (_req, res) => {
+    noStore(res);
+    res.json({
+      mode: defaultMode(), modes: ['mock', 'live'], simulated: true, release: '2026-11-02', unverified: true,
+      version: (() => { try { return JSON.parse(fs.readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version || null; } catch { return null; } })(),
+    });
+  });
 
   // Rule 19: the Mock/Real toggle. Both modes here are simulated in this process (Live is a local engine, loopback only),
   // so Real is honestly unavailable: the toggle still exists and switching to it is a 409 with the reason.
