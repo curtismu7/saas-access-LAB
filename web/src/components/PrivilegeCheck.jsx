@@ -20,7 +20,7 @@ export default function PrivilegeCheck({ text = DEFAULT_TEXT }) {
   return (
     <div className="pc" data-testid="privilege-check">
       <div className="pc__row">
-        <button type="button" className="pc__run" onClick={run} disabled={state.phase === "running"}>
+        <button type="button" className="pc__run primary" onClick={run} disabled={state.phase === "running"}>
           {state.phase === "running" ? "Calling the gateway…" : "Send the request text through live Privilege"}
         </button>
         <span className="pc__hint">Live call: this lab → the tenant's AI Guard (Privilege AI Guard in the decision path)</span>

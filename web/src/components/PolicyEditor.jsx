@@ -59,7 +59,7 @@ export default function PolicyEditor({ policy, levels, roles, readOnly, busy, on
       </fieldset>
       {errors?.length > 0 && <div className="field-error" role="alert" data-testid="pe-errors">{errors.join("; ")}</div>}
       <div className="seg">
-        <button type="button" className="primary" disabled={off} onClick={() => onSave(draft)} data-testid="pe-save">Save policy</button>
+        <button type="button" disabled={off} onClick={() => onSave(draft)} data-testid="pe-save">Save policy</button>
         <button type="button" disabled={off} onClick={onRetire} data-testid="pe-retire">Retire this policy (releases the grants it issued)</button>
       </div>
     </details>

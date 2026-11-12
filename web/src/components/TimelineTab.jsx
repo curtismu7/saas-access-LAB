@@ -31,7 +31,7 @@ export default function TimelineTab({ story, mode, lab }) {
         <p className="lesson" data-testid="clock">Lab time: <strong>{t(state.clock)} UTC</strong> (started {t(state.clockStart)}). The reaper wakes every {state.reaperTickMin} lab minutes and at the end of every move; the nightly reconcile runs at {String(state.nightlyHourUtc).padStart(2, "0")}:00 <SourceTag source="invented" /></p>
         <div className="seg">
           <button type="button" disabled={off} onClick={() => move({ minutes: 15 })} data-testid="adv-15">+15 min</button>
-          <button type="button" disabled={off} onClick={() => move({ minutes: 60 })} data-testid="adv-60">+1 h</button>
+          <button type="button" className="primary" disabled={off} onClick={() => move({ minutes: 60 })} data-testid="adv-60">+1 h</button>
           <button type="button" disabled={off} onClick={() => move({ minutes: 1440 })} data-testid="adv-1440">+1 day</button>
           <label className="inline">Minutes <input type="number" min="1" value={custom} onChange={(e) => setCustom(e.target.value)} data-testid="adv-custom-minutes" /></label>
           <button type="button" disabled={off} onClick={() => move({ minutes: Number(custom) })} data-testid="adv-custom">Advance</button>
