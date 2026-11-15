@@ -2,6 +2,7 @@
 // policies, integrations, reset). Server state per workspace id (X-Workspace) is one engine per vertical, so one visitor's Reset never touches another's.
 // Mock reads generated tables and refuses every write; Live drives the engine. Both are loopback-only with zero outbound calls.
 import fs from 'node:fs';
+import { readFileSettings, doorConfig, createRealDoor } from './gatewayReal.js';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
@@ -53,6 +54,7 @@ export const ROUTES = {
   '/api/integrations': ['PUT'],
   '/api/reset': ['POST'],
   '/api/privilege-check': ['POST'],
+  '/api/gateway-check': ['POST'],
 };
 const METHODS = buildMethodTable(ROUTES);
 
@@ -95,15 +97,41 @@ export function createApp({ health = createHealth(), configFile = CONFIG, worksp
     });
   });
 
-  // Rule 19: the Mock/Real toggle. Both modes here are simulated in this process (Live is a local engine, loopback only),
-  // so Real is honestly unavailable: the toggle still exists and switching to it is a 409 with the reason.
-  const REAL_UNAVAILABLE = 'Real (live) is not available in this lab: both modes are simulated in this process (Live is a local engine on loopback, with zero outbound calls), so there is no real platform to switch to. It stays in Mock.';
-  api.get('/mode', (_req, res) => { noStore(res); res.json({ source: 'mock', realAvailable: false, realReason: REAL_UNAVAILABLE }); });
+  // Rule 19: the Mock/Real toggle. Live is a local engine; Real is the shared gateway hop: an agent key from
+  // the shared settings file calling a live Privilege door (SAL_GW_* keys). The AI-Guard real hop stays too.
+  const REAL_UNAVAILABLE = 'Real is not configured: set SAL_GW_URL, SAL_GW_APPS and at least one SAL_GW_KEY_<NAME> in the shared settings file (~/Development/.env, or STANDALONE_ENV). Mock and Live keep working.';
+  const realDoorFrom = (env = process.env) => {
+    const p = env.STANDALONE_ENV || `${env.HOME || ''}/Development/.env`;
+    let text = '';
+    try { text = fs.readFileSync(p, 'utf8'); } catch { /* the environment may still carry the keys */ }
+    for (const [k, v] of Object.entries(env)) if (k.startsWith('SAL_GW_') && v) text += `\n${k}=${v}`;
+    const cfg = doorConfig(text, 'SAL');
+    return cfg.ok ? createRealDoor({ config: cfg, clientInfo: { name: 'saas-access-lab', version: '0.1.0' } }) : null;
+  };
+  api.get('/mode', (_req, res) => { noStore(res); res.json({ source: 'mock', realAvailable: Boolean(realDoorFrom()), realReason: REAL_UNAVAILABLE }); });
   api.post('/mode', (req, res) => {
     const source = bodyOf(req).source;
     if (source !== 'mock' && source !== 'real') return res.status(400).json({ error: 'bad_request', detail: 'source must be exactly "mock" or "real"' });
-    if (source === 'real') return res.status(409).json({ error: 'real_not_available', message: REAL_UNAVAILABLE });
-    res.json({ source: 'mock', realAvailable: false, realReason: REAL_UNAVAILABLE });
+    if (source === 'real') {
+      const door = realDoorFrom();
+      if (!door) return res.status(409).json({ error: 'real_not_available', message: REAL_UNAVAILABLE });
+      return res.json({ source: 'real', realAvailable: true, doors: door.apps, gateway: door.origin });
+    }
+    res.json({ source: 'mock', realAvailable: Boolean(realDoorFrom()), realReason: null });
+  });
+
+  // One real gateway check: tools/list through the door, then the gateway's refusal for a tool nothing grants.
+  api.post('/gateway-check', async (req, res) => {
+    const door = realDoorFrom();
+    if (!door) return res.status(409).json({ error: 'real_not_available', message: REAL_UNAVAILABLE });
+    if (req.body && Object.keys(req.body).some((k) => !['app', 'caller'].includes(k))) return res.status(400).json({ error: 'bad_request', detail: 'the only accepted body fields are { "app", "caller" }' });
+    const app = String(req.body?.app || door.apps[0]);
+    if (!door.apps.includes(app)) return res.status(400).json({ error: 'bad_app', detail: `app must be one of ${door.apps.join(', ')}` });
+    const caller = req.body?.caller && door.callers.some((c) => c.id === req.body.caller) ? req.body.caller : door.callers[0].id;
+    const listing = await door.list(app, caller);
+    const out = { app, caller, gateway: door.origin, listing };
+    if (listing.ok) out.refusal = await door.call(app, caller, 'saas_access_refusal_probe_tool', {});
+    res.json(out);
   });
 
   api.get('/state', workspace, (req, res) => {
