@@ -158,3 +158,26 @@ On Node 26: 319 tests pass (247 server, 47 web, 25 scripts).
 ## Not done
 
 No SE k8s build (deferred by the owner, 2026-10-31). Catalog id D104 (assigned 2026-10-31, owner delegated the choice; not yet recorded in the standalone plan). Every product claim stays UNVERIFIED until it is measured on a tenant that has the release. Team-to-repository and Salesforce profiles are not modelled; the six platforms are in-process models, not the real products.
+
+---
+
+## Real mode: through the PingOne Privilege gateway
+
+Real mode here is one live call through the SE PingOne Privilege gateway
+(`https://mcpgw.ai-demo.ping-devops.com`) with an agent access key from the shared settings
+file (`~/Development/.env`, or the file `STANDALONE_ENV` names).
+
+**Privilege objects this lab uses:**
+
+| Object | Value |
+|---|---|
+| Gateway | `mcpgw.ai-demo.ping-devops.com` (cluster `ai-demo-cmuir`) |
+| Door (Agentic App) | `aggregate-limited` — client path `/aggregate-limited/mcp` |
+| Caller | agent access key `SAL_GW_KEY_LAB_AGENT` (write-only, never shown) |
+| Backend | `aggregate` = the gateway's MCP aggregate over `opensearch` (9 tools) + `banking-mcp` (33 tools); `aggregate-limited` = the same members with a tool filter |
+
+**What runs in Real:** the **Privilege gateway check** (`POST /api/gateway-check`, card on the
+page) — one live `tools/list` through the door with the key, then one `tools/call` probe of a
+tool no policy grants, so you see the gateway's own refusal shape. The gateway's words come
+back unaltered (keys scrubbed). Settings keys: `SAL_GW_URL`, `SAL_GW_APPS`,
+`SAL_GW_KEY_<NAME>` (optional `SAL_GW_VERSION`).

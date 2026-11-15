@@ -8,6 +8,7 @@ import DiagramTab from "./components/DiagramTab";
 import TalkTrack from "./components/TalkTrack";
 import LastAction from "./components/LastAction";
 import PrivilegeCheck from "./components/PrivilegeCheck";
+import GatewayCheck from "./privilege-check/PrivilegeCheck.jsx";
 import useLab from "./hooks/useLab";
 import { getJson, getModeInfo, resetWorkspace, setMode } from "./api";
 import ShelfLink from "./components/ShelfLink.jsx";
@@ -166,6 +167,7 @@ export default function App() {
               )}
               {tab === "request" && <RequestTab {...props} scenarioId={scenarioId} setScenarioId={setScenarioId} />}
               {tab === "request" && <PrivilegeCheck />}
+              <GatewayCheck />
               {tab === "approvals" && <ApprovalsTab {...props} />}
               {tab === "timeline" && <TimelineTab {...props} />}
               {tab === "drift" && <DriftTab key={vertical} {...props} />}
