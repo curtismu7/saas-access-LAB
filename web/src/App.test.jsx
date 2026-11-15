@@ -8,6 +8,7 @@ import { createHealth } from "../../server/src/health.js";
 import { VERTICALS } from "../../server/src/cast.js";
 import App, { BANNER_UNKNOWN, TABS } from "./App";
 import { labelOffsets } from "./components/PatternDiagram";
+import { setJsonView } from "./components/JsonPane";
 import { visible } from "./safeText";
 import { forgetWorkspace } from "./workspace";
 
@@ -34,7 +35,7 @@ beforeAll(async () => {
   };
 });
 afterAll(async () => { globalThis.fetch = realFetch; await new Promise((r) => server.close(r)); });
-beforeEach(() => { cleanup(); forgetWorkspace(); seen = []; delay = () => 0; override = () => null; pending = 0; try { window.localStorage.clear(); window.sessionStorage.clear(); } catch { /* ignore */ } window.location.hash = ""; });
+beforeEach(() => { cleanup(); setJsonView("form"); forgetWorkspace(); seen = []; delay = () => 0; override = () => null; pending = 0; try { window.localStorage.clear(); window.sessionStorage.clear(); } catch { /* ignore */ } window.location.hash = ""; });
 
 const T = { timeout: 20000 };
 const REFUSED_ID = ["abcdefghijklmnop", "qrstuv12"].join(""); // passes the page's own rule; the server's masker refuses it
@@ -195,6 +196,23 @@ describe("Request tab (Live)", () => {
     const inbox = await screen.findByTestId("inbox", {}, T);
     expect(within(inbox).getByTestId("pending-level")).toHaveTextContent(new RegExp(`Level 1 of 2: manager.*${C.castManager}`));
     await tab("Request"); // the form is still there
+  });
+
+  it("rule 24: the hops are shared JsonPane panes, a Form | JSON toggle, and the JSON view is still masked", async () => {
+    await live();
+    const secret = ["gh", "p_", "a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8"].join("");
+    setValue("reason", `use ${secret} please`);
+    await submitDefault();
+    const hops = screen.getByTestId("hops");
+    expect(within(hops).getAllByRole("button", { name: "Form" }).length).toBeGreaterThan(1);
+    expect(within(hops).getAllByRole("button", { name: "JSON" }).length).toBeGreaterThan(1);
+    const request = within(hops).getByLabelText("hop 1 request");
+    expect(request.className).toContain("json--form"); // the view the test set
+    await userEvent.click(within(hops).getAllByRole("button", { name: "JSON" })[0]);
+    const raw = within(hops).getByLabelText("hop 1 request");
+    expect(raw.className).toContain("json--raw");
+    expect(raw).toHaveTextContent('"traceparent"'); // the exact JSON text, quoted keys
+    expect(wholePageText()).not.toContain(secret);
   });
 
   it("a credential typed as the reason is masked everywhere on the page, in the hops and in the request, and never comes back", async () => {
