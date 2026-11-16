@@ -41,7 +41,8 @@ const T = { timeout: 20000 };
 const REFUSED_ID = ["abcdefghijklmnop", "qrstuv12"].join(""); // passes the page's own rule; the server's masker refuses it
 const mount = async () => { render(<App />); await screen.findByTestId(modeInUrl() ? "request-form" : "scenarios", {}, T); };
 const modeInUrl = () => { try { return window.localStorage.getItem("sal.mode") === "live"; } catch { return false; } };
-const tab = (name) => userEvent.click(screen.getByRole("tab", { name }));
+const nav = () => within(screen.getByRole("navigation", { name: "Lab sections" }));
+const tab = (name) => userEvent.click(nav().getByRole("link", { name }));
 const click = (id) => userEvent.click(screen.getByTestId(id));
 // Rule 19: the toggle can no longer switch to Live (Real is refused by the server), so the Live-mode tests open the
 // page in Live directly, the way an owner does with SAL_LAB_MODE=live: the saved choice, read on load.
@@ -70,7 +71,7 @@ describe("shell", () => {
   it("says it is simulated and UNVERIFIED on every tab, in presenter mode too, and shows the mode", async () => {
     await mount();
     expect(screen.getByTestId("banner")).toHaveTextContent(/MOCK mode/);
-    expect(screen.getByTestId("mode")).toHaveTextContent("Mode: mock");
+    expect(screen.getByTestId("mode")).toHaveTextContent("Mock");
     for (const t of TABS) {
       await tab(t.label);
       expect(screen.getByTestId("banner")).toHaveTextContent(/UNVERIFIED on our tenant/);
@@ -95,18 +96,26 @@ describe("shell", () => {
     await waitFor(() => expect(live).toBeDisabled(), T);
     expect(live.getAttribute("title")).toMatch(/Real \(live\) is not available in this lab/); // the how-to tooltip
     expect(modeSelect).toHaveValue("mock"); // a disabled option cannot be chosen
-    expect(screen.getByTestId("mode")).toHaveTextContent("Mode: mock");
+    expect(screen.getByTestId("mode")).toHaveTextContent("Mock");
     expect(screen.getByTestId("banner")).toHaveAttribute("data-state", "mock");
   });
 
-  it("arrow keys move between tabs, and the URL hash follows", async () => {
+  it("the shell-bar nav pills mark the current page, and the URL hash follows; the bar comes first, then main with the banner first", async () => {
     await mount();
-    screen.getByRole("tab", { name: "Request" }).focus();
-    await userEvent.keyboard("{ArrowRight}");
-    expect(screen.getByRole("tab", { name: "Approvals" })).toHaveAttribute("aria-selected", "true");
+    const bar = document.querySelector("header.shell-bar");
+    expect(document.querySelector(".app").firstElementChild).toBe(bar);
+    expect(bar.nextElementSibling.tagName).toBe("MAIN");
+    expect(document.querySelector("main").firstElementChild).toBe(screen.getByTestId("banner"));
+    expect(within(bar).getByRole("heading", { level: 1 })).toHaveTextContent("SaaS Access LAB");
+    expect(within(bar).getByTestId("top-menu")).toBeInTheDocument();
+    expect(nav().getByRole("link", { name: "Request" })).toHaveAttribute("aria-current", "page");
+    await tab("Approvals");
+    expect(nav().getByRole("link", { name: "Approvals" })).toHaveAttribute("aria-current", "page");
+    expect(nav().getByRole("link", { name: "Request" })).not.toHaveAttribute("aria-current");
     expect(window.location.hash).toBe("#approvals");
-    await userEvent.keyboard("{ArrowLeft}{ArrowLeft}");
-    expect(screen.getByRole("tab", { name: "Talk track" })).toHaveAttribute("aria-selected", "true");
+    await tab("Talk track");
+    expect(nav().getByRole("link", { name: "Talk track" })).toHaveAttribute("aria-current", "page");
+    expect(window.location.hash).toBe("#talk");
   });
 
   it("talks only to its own origin", async () => {

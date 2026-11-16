@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import RequestTab from "./components/RequestTab";
 import ApprovalsTab from "./components/ApprovalsTab";
 import TimelineTab from "./components/TimelineTab";
@@ -55,7 +55,6 @@ export default function App() {
   const [resetMsg, setResetMsg] = useState("");
   const [theme, setTheme] = useState(initialTheme);
   const [fontStep, setFontStep] = useState(initialFontStep);
-  const tabsRef = useRef(null);
   const lab = useLab({ mode, vertical, scenario: scenarioId });
 
   useEffect(() => { if (theme === "auto") delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = theme; }, [theme]);
@@ -96,14 +95,6 @@ export default function App() {
   };
   const select = (id) => { setTab(id); try { window.history.replaceState(null, "", `#${id}`); } catch { /* ignore */ } };
 
-  // Keep the active tab fully in view in the scrolling tab strip (375px).
-  useEffect(() => {
-    const strip = tabsRef.current; const el = document.getElementById(`tab-${tab}`);
-    if (!strip || !el) return;
-    const left = el.offsetLeft - strip.offsetLeft;
-    if (left < strip.scrollLeft || left + el.offsetWidth > strip.scrollLeft + strip.clientWidth) strip.scrollLeft = Math.max(0, left - 8);
-  }, [tab]);
-
   useEffect(() => {
     const on = (e) => {
       if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
@@ -123,53 +114,47 @@ export default function App() {
     setResetMsg(ok ? "Reset: your workspace's requests, grants, receipts, platform state, outbox, audit trail, policies and the lab clock are back to the start, and the diagram is back in place." : "Reset failed on the server; the view was reloaded.");
   }, [lab.reload]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const onKeyTab = (e, i) => {
-    if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
-    const next = TABS[(i + (e.key === "ArrowRight" ? 1 : TABS.length - 1)) % TABS.length];
-    select(next.id);
-    document.getElementById(`tab-${next.id}`)?.focus();
-  };
-
   const banner = story && mode ? story.banner[mode] : BANNER_UNKNOWN;
   const ready = story && mode;
   const props = { story, mode, vertical, lab };
   return (
     <div className={`app${presenter ? " app--presenter" : ""}`}>
-      <header>
-        <p className="banner" role="status" data-state={mode === "live" ? "live" : "mock"} data-testid="banner">{banner}</p>
-        <div className="head">
-          <div>
-            <h1 className="head__title">SaaS Access LAB</h1>
-            {!presenter && story && <p className="head__intro">{story.intro}</p>}
-          </div>
-          <div className="head__tools">
-            <TopMenu
-              mode={{ value: mode === "live" ? "real" : "mock", onChange: switchMode, realAvailable: modeInfo ? modeInfo.realAvailable !== false : null, realHint: modeInfo?.realReason }}
-              vertical={{ value: vertical, onChange: setVertical, options: story ? story.verticals : ["finance"] }}
-              theme={{ value: theme, onChange: pickTheme }}
-              fontSize={{ value: fontStep, onChange: setFontStep }}
-              present={{ active: presenter, onToggle: () => setPresenter((v) => !v), label: "Presenter (P)" }}
-              help={{ href: "https://github.com/curtismu7/saas-access-LAB#readme" }}
-              version={infoVersion}
-              onReset={reset}
-            >
-              <ShelfLink headers={() => ({ "x-workspace": workspaceId() })} />
-              <VerifyMark id="saas-access-lab" headers={() => ({ "x-workspace": workspaceId() })} />
-            </TopMenu>
-            <span className="chip" data-testid="mode">Mode: {mode || "..."}{mode === "live" ? " (local engine, loopback)" : mode === "mock" ? " (tables)" : ""}</span>
-          </div>
-        </div>
-      </header>
-      <main>
-        <p className="sr-only" role="status" aria-live="polite">{resetMsg}</p>
-        <div role="tablist" aria-label="Lab sections" className="tabs" ref={tabsRef}>
-          {TABS.map((t, i) => (
-            <button key={t.id} id={`tab-${t.id}`} role="tab" type="button" aria-selected={tab === t.id} aria-controls={`panel-${t.id}`} tabIndex={tab === t.id ? 0 : -1}
-              onClick={() => select(t.id)} onKeyDown={(e) => onKeyTab(e, i)}>{t.label}</button>
+      <header className="shell-bar">
+        <span className="shell-brand">
+          <span className="shell-logo" aria-hidden="true">SAL</span>
+          <h1>SaaS Access LAB</h1>
+          {mode && (
+            <span className={`shell-badge${mode === "live" ? " shell-badge--live" : ""}`} data-testid="mode"
+              title={mode === "live" ? "Live: local engine, loopback" : "Mock: tables"}>{mode === "live" ? "Live" : "Mock"}</span>
+          )}
+        </span>
+        <nav className="shell-nav" aria-label="Lab sections">
+          {TABS.map((t) => (
+            <a key={t.id} href={`#${t.id}`} aria-current={tab === t.id ? "page" : undefined}
+              onClick={(e) => { e.preventDefault(); select(t.id); }}>{t.label}</a>
           ))}
-        </div>
-        <div id={`panel-${tab}`} role="tabpanel" aria-labelledby={`tab-${tab}`}>
-          {error || lab.error ? <p className="app-error" role="alert">Could not load the lab ({error || lab.error}). Is the server running?</p> : !ready ? <p className="muted">Loading...</p> : (
+        </nav>
+        <TopMenu
+          mode={{ value: mode === "live" ? "real" : "mock", onChange: switchMode, realAvailable: modeInfo ? modeInfo.realAvailable !== false : null, realHint: modeInfo?.realReason }}
+          vertical={{ value: vertical, onChange: setVertical, options: story ? story.verticals : ["finance"] }}
+          theme={{ value: theme, onChange: pickTheme }}
+          fontSize={{ value: fontStep, onChange: setFontStep }}
+          present={{ active: presenter, onToggle: () => setPresenter((v) => !v), label: "Presenter (P)" }}
+          help={{ href: "https://github.com/curtismu7/saas-access-LAB#readme" }}
+          version={infoVersion}
+          onReset={reset}
+        >
+          <ShelfLink headers={() => ({ "x-workspace": workspaceId() })} />
+          <VerifyMark id="saas-access-lab" headers={() => ({ "x-workspace": workspaceId() })} />
+        </TopMenu>
+      </header>
+      <main className="page">
+        <p className="banner" role="status" data-state={mode === "live" ? "live" : "mock"} data-testid="banner">{banner}</p>
+        {(error || lab.error) && <p className="app-error" role="alert">Could not load the lab ({error || lab.error}). Is the server running?</p>}
+        <p className="sr-only" role="status" aria-live="polite">{resetMsg}</p>
+        {!presenter && story && <div className="page-head"><p className="head__intro">{story.intro}</p></div>}
+        <div id={`panel-${tab}`}>
+          {error || lab.error ? null : !ready ? <p className="muted">Loading...</p> : (
             <>
               {mode === "mock" && lab.scenario && ["approvals", "timeline", "drift", "platforms"].includes(tab) && (
                 <p className="muted" data-testid="scenario-note">Showing the end of the scripted scenario "{lab.scenario.title}". Pick another on the Request tab, or switch to Live to act yourself.</p>
