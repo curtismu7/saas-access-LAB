@@ -11,6 +11,7 @@ import PrivilegeCheck from "./components/PrivilegeCheck";
 import useLab from "./hooks/useLab";
 import { getJson, getModeInfo, resetWorkspace, setMode } from "./api";
 import ShelfLink from "./components/ShelfLink.jsx";
+import VerifyMark from "./components/VerifyMark.jsx";
 import TopMenu, { applyFontSize } from "./top-menu/TopMenu.jsx";
 import { workspaceId } from "./workspace.js";
 
@@ -153,6 +154,7 @@ export default function App() {
               onReset={reset}
             >
               <ShelfLink headers={() => ({ "x-workspace": workspaceId() })} />
+              <VerifyMark id="saas-access-lab" headers={() => ({ "x-workspace": workspaceId() })} />
             </TopMenu>
             <span className="chip" data-testid="mode">Mode: {mode || "..."}{mode === "live" ? " (local engine, loopback)" : mode === "mock" ? " (tables)" : ""}</span>
           </div>
