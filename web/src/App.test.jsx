@@ -94,7 +94,7 @@ describe("shell", () => {
     const modeSelect = await waitFor(() => screen.getByTestId("mode-select"), T);
     const live = modeSelect.querySelector('option[value="real"]');
     await waitFor(() => expect(live).toBeDisabled(), T);
-    expect(live.getAttribute("title")).toMatch(/Real \(live\) is not available in this lab/); // the how-to tooltip
+    expect(live.getAttribute("title")).toMatch(/Real is not configured: set SAL_GW_/); // the how-to tooltip
     expect(modeSelect).toHaveValue("mock"); // a disabled option cannot be chosen
     expect(screen.getByTestId("mode")).toHaveTextContent("Mock");
     expect(screen.getByTestId("banner")).toHaveAttribute("data-state", "mock");
