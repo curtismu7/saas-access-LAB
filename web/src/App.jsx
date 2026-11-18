@@ -170,7 +170,11 @@ export default function App() {
               )}
               {tab === "request" && <RequestTab {...props} scenarioId={scenarioId} setScenarioId={setScenarioId} />}
               {tab === "request" && <PrivilegeCheck />}
-              <GatewayCheck />
+              {/* one primary per view state: tabs with their own action (request/approvals/timeline/drift) keep
+                  it; tabs with none (diagram/platforms/talk/live) make the gateway check the primary */}
+              {tab === "diagram" || tab === "platforms" || tab === "talk" || tab === "live"
+                ? <GatewayCheck primaryRetry />
+                : <GatewayCheck />}
               {tab === "approvals" && <ApprovalsTab {...props} />}
               {tab === "timeline" && <TimelineTab {...props} />}
               {tab === "drift" && <DriftTab key={vertical} {...props} />}
