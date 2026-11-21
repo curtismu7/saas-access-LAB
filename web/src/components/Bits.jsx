@@ -4,7 +4,7 @@ import { visible } from "../safeText";
 // Every JSON pane is the shared JsonPane (Form | JSON, full view, rule 24); it applies visible() to everything it shows.
 import Json from "./JsonPane.jsx";
 export { Json };
-export const HOP_HOT = ["decision", "status", "approver", "resource", "expiresAt", "traceparent"];
+export const HOP_HOT = ["decision", "expiresAt"];
 
 // Every product claim carries this tag. It is on every tab, and in presenter mode too.
 export function ClaimTag({ label }) {
