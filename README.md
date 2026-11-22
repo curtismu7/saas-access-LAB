@@ -72,6 +72,15 @@ The deck gives claims; the console swagger of 2026-10-31 (schema only) gives fie
 
 ## Run from a clone
 
+### Postman
+
+`postman/saas-access-lab.postman_collection.json` drives the mock surface without the UI: the story catalog (platforms, resources, levels, roles, limits), a valid access-request preview (manager requests for an engineer, with the approval routing back), the requester-not-allowed, unknown-resource and missing-request negatives, and the gateway-check 409 that marks the live-only boundary. No environment needed.
+
+```
+node ../../shared/postman/generator.mjs --spec postman/spec.json            # regenerate (never hand-edit the output)
+npx newman run postman/saas-access-lab.postman_collection.json
+```
+
 Prerequisites: Node 26 or newer. Docker only if you use the Docker form. Mock mode works with no setup at all: no tenant, no credentials, no settings file.
 
 ```

@@ -1,0 +1,48 @@
+{
+  "name": "SaaS Access LAB",
+  "slug": "saas-access-lab",
+  "description": "API collection for SaaS Access LAB: the zero-standing-access story across SaaS platforms (GitHub, GitLab, Salesforce, Snowflake, Databricks, Google Workspace). Preview a time-boxed access request against the approval routing (mock mode), and read the story catalog with its platforms, roles and honest field sources. The gateway check needs live mode (real_not_available in mock — the negative case).",
+  "baseUrl": "http://localhost:7250",
+  "env": {},
+  "folders": [
+    {
+      "name": "Sanity (mock, labelled)",
+      "description": "Health, mode info and the story catalog: platforms with their resources and levels, the approval roles, and the honest limits.",
+      "requests": [
+        { "name": "Health", "method": "GET", "path": "/api/health",
+          "tests": ["pm.response.to.have.status(200);", "pm.expect(pm.response.json().state).to.eql('ready');"] },
+        { "name": "Info", "method": "GET", "path": "/api/info",
+          "tests": ["pm.response.to.have.status(200);"] },
+        { "name": "Story (platforms, roles, limits)", "method": "GET", "path": "/api/story",
+          "tests": ["pm.response.to.have.status(200);", "pm.expect(pm.response.json().platforms.length).to.be.above(0);"] }
+      ]
+    },
+    {
+      "name": "Preview an access request (mock)",
+      "description": "e.preview(body.request) with {mode:'mock', request:{...}}. requestedBy must be the subject or the subject's manager (an agent's custodian); resource must be one of the platform's resource ids from /api/story.",
+      "requests": [
+        { "name": "Preview a valid request (manager requests for engineer)", "method": "POST", "path": "/api/preview",
+          "body": { "mode": "mock", "request": { "requestedBy": "priya.nair", "subjectKind": "human", "subjectId": "omar.reyes", "platform": "github", "resource": "gh-repo-core", "level": "read", "durationMin": 30, "policyId": "pol-code-read", "reason": "incident coverage" } },
+          "tests": ["pm.response.to.have.status(200);", "pm.expect(pm.response.json().preview.ok).to.eql(true);", "pm.expect(pm.response.json().preview.routing).to.be.an('array');"] },
+        { "name": "Preview: requester is not the manager (negative)", "method": "POST", "path": "/api/preview",
+          "body": { "mode": "mock", "request": { "requestedBy": "maya.chen", "subjectKind": "human", "subjectId": "omar.reyes", "platform": "github", "resource": "gh-repo-core", "level": "read", "durationMin": 30, "policyId": "pol-code-read", "reason": "incident" } },
+          "tests": ["pm.response.to.have.status(200);", "pm.expect(pm.response.json().preview.ok).to.eql(false);", "pm.expect(pm.response.json().preview.error.code).to.eql('requester_not_allowed');"] },
+        { "name": "Preview: unknown resource (negative)", "method": "POST", "path": "/api/preview",
+          "body": { "mode": "mock", "request": { "requestedBy": "priya.nair", "subjectKind": "human", "subjectId": "omar.reyes", "platform": "github", "resource": "payments-api", "level": "read", "durationMin": 30, "policyId": "pol-code-read", "reason": "incident" } },
+          "tests": ["pm.response.to.have.status(200);", "pm.expect(pm.response.json().preview.ok).to.eql(false);", "pm.expect(pm.response.json().preview.error.code).to.eql('bad_resource');"] },
+        { "name": "Preview without a request (negative)", "method": "POST", "path": "/api/preview",
+          "body": { "mode": "mock" },
+          "tests": ["pm.response.to.have.status(200);", "pm.expect(pm.response.json().preview.ok).to.eql(false);"] }
+      ]
+    },
+    {
+      "name": "Gateway check (live only)",
+      "description": "The gateway-check endpoint needs live mode with SAL_GW_URL/SAL_GW_APPS/SAL_GW_KEY_* configured; in mock it answers 409 real_not_available — the negative case here.",
+      "requests": [
+        { "name": "Gateway check in mock (negative, 409)", "method": "POST", "path": "/api/gateway-check",
+          "body": { "text": "grant omar.reyes read on payments-api for an incident" },
+          "tests": ["pm.expect(pm.response.code).to.eql(409);", "pm.expect(pm.response.json().error).to.eql('real_not_available');"] }
+      ]
+    }
+  ]
+}
