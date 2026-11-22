@@ -1,0 +1,337 @@
+{
+  "info": {
+    "name": "SaaS Access LAB",
+    "description": "API collection for SaaS Access LAB: the zero-standing-access story across SaaS platforms (GitHub, GitLab, Salesforce, Snowflake, Databricks, Google Workspace). Preview a time-boxed access request against the approval routing (mock mode), and read the story catalog with its platforms, roles and honest field sources. The gateway check needs live mode (real_not_available in mock — the negative case).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "postman-saas-access-lab"
+  },
+  "item": [
+    {
+      "name": "Sanity (mock, labelled)",
+      "description": "Health, mode info and the story catalog: platforms with their resources and levels, the approval roles, and the honest limits.",
+      "item": [
+        {
+          "name": "Health",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "/* Assertions for this request */",
+                  "pm.response.to.have.status(200);",
+                  "pm.expect(pm.response.json().state).to.eql('ready');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{LAB_BASE}}/api/health",
+              "host": [
+                "{{LAB_BASE}}"
+              ],
+              "path": [
+                "api",
+                "health"
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Info",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "/* Assertions for this request */",
+                  "pm.response.to.have.status(200);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{LAB_BASE}}/api/info",
+              "host": [
+                "{{LAB_BASE}}"
+              ],
+              "path": [
+                "api",
+                "info"
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Story (platforms, roles, limits)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "/* Assertions for this request */",
+                  "pm.response.to.have.status(200);",
+                  "pm.expect(pm.response.json().platforms.length).to.be.above(0);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{LAB_BASE}}/api/story",
+              "host": [
+                "{{LAB_BASE}}"
+              ],
+              "path": [
+                "api",
+                "story"
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Preview an access request (mock)",
+      "description": "e.preview(body.request) with {mode:'mock', request:{...}}. requestedBy must be the subject or the subject's manager (an agent's custodian); resource must be one of the platform's resource ids from /api/story.",
+      "item": [
+        {
+          "name": "Preview a valid request (manager requests for engineer)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "/* Assertions for this request */",
+                  "pm.response.to.have.status(200);",
+                  "pm.expect(pm.response.json().preview.ok).to.eql(true);",
+                  "pm.expect(pm.response.json().preview.routing).to.be.an('array');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mode\": \"mock\",\n  \"request\": {\n    \"requestedBy\": \"priya.nair\",\n    \"subjectKind\": \"human\",\n    \"subjectId\": \"omar.reyes\",\n    \"platform\": \"github\",\n    \"resource\": \"gh-repo-core\",\n    \"level\": \"read\",\n    \"durationMin\": 30,\n    \"policyId\": \"pol-code-read\",\n    \"reason\": \"incident coverage\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{LAB_BASE}}/api/preview",
+              "host": [
+                "{{LAB_BASE}}"
+              ],
+              "path": [
+                "api",
+                "preview"
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Preview: requester is not the manager (negative)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "/* Assertions for this request */",
+                  "pm.response.to.have.status(200);",
+                  "pm.expect(pm.response.json().preview.ok).to.eql(false);",
+                  "pm.expect(pm.response.json().preview.error.code).to.eql('requester_not_allowed');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mode\": \"mock\",\n  \"request\": {\n    \"requestedBy\": \"maya.chen\",\n    \"subjectKind\": \"human\",\n    \"subjectId\": \"omar.reyes\",\n    \"platform\": \"github\",\n    \"resource\": \"gh-repo-core\",\n    \"level\": \"read\",\n    \"durationMin\": 30,\n    \"policyId\": \"pol-code-read\",\n    \"reason\": \"incident\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{LAB_BASE}}/api/preview",
+              "host": [
+                "{{LAB_BASE}}"
+              ],
+              "path": [
+                "api",
+                "preview"
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Preview: unknown resource (negative)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "/* Assertions for this request */",
+                  "pm.response.to.have.status(200);",
+                  "pm.expect(pm.response.json().preview.ok).to.eql(false);",
+                  "pm.expect(pm.response.json().preview.error.code).to.eql('bad_resource');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mode\": \"mock\",\n  \"request\": {\n    \"requestedBy\": \"priya.nair\",\n    \"subjectKind\": \"human\",\n    \"subjectId\": \"omar.reyes\",\n    \"platform\": \"github\",\n    \"resource\": \"payments-api\",\n    \"level\": \"read\",\n    \"durationMin\": 30,\n    \"policyId\": \"pol-code-read\",\n    \"reason\": \"incident\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{LAB_BASE}}/api/preview",
+              "host": [
+                "{{LAB_BASE}}"
+              ],
+              "path": [
+                "api",
+                "preview"
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Preview without a request (negative)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "/* Assertions for this request */",
+                  "pm.response.to.have.status(200);",
+                  "pm.expect(pm.response.json().preview.ok).to.eql(false);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mode\": \"mock\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{LAB_BASE}}/api/preview",
+              "host": [
+                "{{LAB_BASE}}"
+              ],
+              "path": [
+                "api",
+                "preview"
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Gateway check (live only)",
+      "description": "The gateway-check endpoint needs live mode with SAL_GW_URL/SAL_GW_APPS/SAL_GW_KEY_* configured; in mock it answers 409 real_not_available — the negative case here.",
+      "item": [
+        {
+          "name": "Gateway check in mock (negative, 409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "/* Assertions for this request */",
+                  "pm.expect(pm.response.code).to.eql(409);",
+                  "pm.expect(pm.response.json().error).to.eql('real_not_available');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"grant omar.reyes read on payments-api for an incident\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{LAB_BASE}}/api/gateway-check",
+              "host": [
+                "{{LAB_BASE}}"
+              ],
+              "path": [
+                "api",
+                "gateway-check"
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "LAB_BASE",
+      "value": "http://localhost:7250"
+    }
+  ]
+}
