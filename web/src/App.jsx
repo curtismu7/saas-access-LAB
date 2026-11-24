@@ -138,6 +138,7 @@ export default function App() {
           ))}
         </nav>
         <TopMenu
+          postman={{ repo: "curtismu7/saas-access-LAB", slug: "saas-access-lab" }}
           mode={{ value: mode === "live" ? "real" : "mock", onChange: switchMode, realAvailable: modeInfo ? modeInfo.realAvailable !== false : null, realHint: modeInfo?.realReason }}
           vertical={{ value: vertical, onChange: setVertical, options: story ? story.verticals : ["finance"] }}
           theme={{ value: theme, onChange: pickTheme }}

@@ -18,9 +18,10 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "/* Assertions for this request */",
-                  "pm.response.to.have.status(200);",
-                  "pm.expect(pm.response.json().state).to.eql('ready');"
+                  "pm.test(\"Health\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().state).to.eql('ready');",
+                  "});"
                 ]
               }
             }
@@ -50,8 +51,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "/* Assertions for this request */",
-                  "pm.response.to.have.status(200);"
+                  "pm.test(\"Info\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
                 ]
               }
             }
@@ -81,9 +83,10 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "/* Assertions for this request */",
-                  "pm.response.to.have.status(200);",
-                  "pm.expect(pm.response.json().platforms.length).to.be.above(0);"
+                  "pm.test(\"Story (platforms, roles, limits)\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().platforms.length).to.be.above(0);",
+                  "});"
                 ]
               }
             }
@@ -119,10 +122,11 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "/* Assertions for this request */",
-                  "pm.response.to.have.status(200);",
-                  "pm.expect(pm.response.json().preview.ok).to.eql(true);",
-                  "pm.expect(pm.response.json().preview.routing).to.be.an('array');"
+                  "pm.test(\"Preview a valid request (manager requests for engineer)\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().preview.ok).to.eql(true);",
+                  "  pm.expect(pm.response.json().preview.routing).to.be.an('array');",
+                  "});"
                 ]
               }
             }
@@ -161,10 +165,11 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "/* Assertions for this request */",
-                  "pm.response.to.have.status(200);",
-                  "pm.expect(pm.response.json().preview.ok).to.eql(false);",
-                  "pm.expect(pm.response.json().preview.error.code).to.eql('requester_not_allowed');"
+                  "pm.test(\"Preview: requester is not the manager (negative)\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().preview.ok).to.eql(false);",
+                  "  pm.expect(pm.response.json().preview.error.code).to.eql('requester_not_allowed');",
+                  "});"
                 ]
               }
             }
@@ -203,10 +208,11 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "/* Assertions for this request */",
-                  "pm.response.to.have.status(200);",
-                  "pm.expect(pm.response.json().preview.ok).to.eql(false);",
-                  "pm.expect(pm.response.json().preview.error.code).to.eql('bad_resource');"
+                  "pm.test(\"Preview: unknown resource (negative)\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().preview.ok).to.eql(false);",
+                  "  pm.expect(pm.response.json().preview.error.code).to.eql('bad_resource');",
+                  "});"
                 ]
               }
             }
@@ -245,9 +251,10 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "/* Assertions for this request */",
-                  "pm.response.to.have.status(200);",
-                  "pm.expect(pm.response.json().preview.ok).to.eql(false);"
+                  "pm.test(\"Preview without a request (negative)\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().preview.ok).to.eql(false);",
+                  "});"
                 ]
               }
             }
@@ -292,9 +299,10 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "/* Assertions for this request */",
-                  "pm.expect(pm.response.code).to.eql(409);",
-                  "pm.expect(pm.response.json().error).to.eql('real_not_available');"
+                  "pm.test(\"Gateway check in mock (negative, 409)\", function () {",
+                  "  pm.expect(pm.response.code).to.eql(409);",
+                  "  pm.expect(pm.response.json().error).to.eql('real_not_available');",
+                  "});"
                 ]
               }
             }
