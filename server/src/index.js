@@ -5,6 +5,7 @@ import { assertBindAllowed, bindHost, resolvePort } from './safety.js';
 import { modeFrom } from './config.js';
 import { applySharedSettings } from './settings.js';
 import { aiGuardConfig } from './aiguardProbe.js';
+import { createRunLog } from './runObs.js';
 
 // The one shared settings file (rulebook): ~/Development/.env, or STANDALONE_ENV. Optional; only this lab's own keys are taken; never printed.
 applySharedSettings();
@@ -19,6 +20,7 @@ if (!allPassed(checks)) {
 }
 const mode = modeFrom(process.env); // refuses anything but mock or live
 const host = assertBindAllowed(bindHost(), process.env);
-const { url } = await startHttpServer({ port: resolvePort(), host, app: createApp() });
+// Rule 27: each Live decision leaves one timestamped line on stdout (the only place a Live run is written down; tests use a silent writer).
+const { url } = await startHttpServer({ port: resolvePort(), host, app: createApp({ runLog: createRunLog({ write: (s) => process.stdout.write(s) }) }) });
 console.log(`[saas-access-lab] simulated lab at ${url} (opens in ${mode} mode; loopback, no outbound network)`);
 console.log(`[saas-access-lab] health: ${url}api/health`);

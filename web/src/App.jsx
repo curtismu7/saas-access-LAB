@@ -8,6 +8,7 @@ import DiagramTab from "./components/DiagramTab";
 import TalkTrack from "./components/TalkTrack";
 import LastAction from "./components/LastAction";
 import PrivilegeCheck from "./components/PrivilegeCheck";
+import RunObsPanel from "./components/RunObsPanel.jsx";
 import GatewayCheck from "./privilege-check/PrivilegeCheck.jsx";
 import useLab from "./hooks/useLab";
 import { getJson, getModeInfo, resetWorkspace, setMode } from "./api";
@@ -170,6 +171,7 @@ export default function App() {
                 </aside>
               )}
               {tab === "request" && <RequestTab {...props} scenarioId={scenarioId} setScenarioId={setScenarioId} />}
+              {tab === "request" && <RunObsPanel mode={mode} vertical={vertical} scenario={scenarioId} stamp={lab.state} />}
               {tab === "request" && <PrivilegeCheck />}
               {/* one primary per view state: tabs with their own action (request/approvals/timeline/drift) keep
                   it; tabs with none (diagram/platforms/talk/live) make the gateway check the primary */}
