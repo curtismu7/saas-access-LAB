@@ -22,6 +22,7 @@ import { maskDeep } from './mask.js';
 import { overBounds } from './bounds.js';
 import { shelfInfo } from './shelfLink.js';
 import { aiGuardConfig, sendToAiGuard } from './aiguardProbe.js';
+import { createRunLog, mockRunRecord } from './runObs.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIST = process.env.WEB_DIST || path.resolve(HERE, '../../web/dist');
@@ -39,6 +40,7 @@ export const ROUTES = {
   '/api/story': ['GET'],
   '/api/diagram': ['GET'],
   '/api/state': ['GET'],
+  '/api/run-observability': ['GET'],
   '/api/preview': ['POST'],
   '/api/requests': ['POST'],
   '/api/requests/:id/decision': ['POST'],
@@ -58,7 +60,7 @@ export const ROUTES = {
 };
 const METHODS = buildMethodTable(ROUTES);
 
-export function createApp({ health = createHealth(), configFile = CONFIG, workspaces = createWorkspaces(), table = MOCK_TABLE, webDist = WEB_DIST } = {}) {
+export function createApp({ health = createHealth(), configFile = CONFIG, workspaces = createWorkspaces(), table = MOCK_TABLE, webDist = WEB_DIST, runLog = createRunLog() } = {}) {
   const app = express();
   app.disable('x-powered-by');
   // 0. The response mask, first of all: everything that leaves through res.json (hops, echo, state, audit, errors) is passed through maskDeep, values AND object
@@ -143,6 +145,22 @@ export function createApp({ health = createHealth(), configFile = CONFIG, worksp
     return res.json({ mode, vertical, workspace: id, state: liveState(id, workspaces, vertical, castFor(req)) });
   });
 
+  // Rule 27: the run panel. Mock: the scenario's stored steps (never re-run). Live: this workspace's current run. Each mode answers only its own record.
+  api.get('/run-observability', workspace, async (req, res, next) => {
+    const id = req.workspaceId;
+    noStore(res);
+    try {
+      const mode = modeOf(req.query.mode); if (!mode) return res.status(400).json({ error: 'bad_mode', detail: 'mode must be mock or live' });
+      const vertical = verticalOf(req);
+      if (mode === 'mock') {
+        const v = table.verticals[vertical];
+        const sc = (typeof req.query.scenario === 'string' && v.scenarios.find((s) => s.id === req.query.scenario)) || v.scenarios[0];
+        return res.json({ mode, vertical, workspace: id, scenario: sc.id, record: await mockRunRecord({ vertical, scenario: sc }) });
+      }
+      return res.json({ mode, vertical, workspace: id, record: await runLog.liveRecord(id, vertical) });
+    } catch (e) { return next(e); }
+  });
+
   // Read-only: the same checks and routing as a real request, creating nothing. Mock uses a fresh engine, Live the workspace's own.
   api.post('/preview', workspace, (req, res) => {
     const id = req.workspaceId;
@@ -159,16 +177,20 @@ export function createApp({ health = createHealth(), configFile = CONFIG, worksp
     api[method](route, workspace, (req, res, next) => {
       const id = req.workspaceId;
       noStore(res);
+      // Rule 27: a write refused with a 400 before it runs begins no run and leaves no row, but writes its one run=- stdout line.
+      const refusedBeforeRun = (body) => { runLog.record(id, null, op, {}, { ok: false, status: 400, code: body.error }); return res.status(400).json(body); };
       try {
-        if (!isObj(req.body)) return res.status(400).json({ error: 'bad_request' });
+        if (!isObj(req.body)) return refusedBeforeRun({ error: 'bad_request' });
         // A text, a key, a list, an object or a nesting over a bound (bounds.js), in the body or in the path, is refused whole before anything runs.
         if (overBounds(req.body) || overBounds(req.params)) return res.status(413).json({ error: 'payload_too_large', detail: TOO_BIG });
         const mode = modeOf(req.body.mode);
-        if (!mode) return res.status(400).json({ error: 'bad_mode', detail: 'mode must be mock or live' });
+        if (!mode) return refusedBeforeRun({ error: 'bad_mode', detail: 'mode must be mock or live' });
         if (mode === 'mock') return res.status(409).json({ error: 'mock_is_read_only', detail: 'Mock mode only reads tables: switch to Live to act' });
-        if (!Object.keys(req.body).every((k) => ['mode', 'vertical', 'refusalsAs200', ...keys].includes(k))) return res.status(400).json({ error: 'unknown_field', detail: 'the body carries a field the lab does not take' });
+        if (!Object.keys(req.body).every((k) => ['mode', 'vertical', 'refusalsAs200', ...keys].includes(k))) return refusedBeforeRun({ error: 'unknown_field', detail: 'the body carries a field the lab does not take' });
         const vertical = verticalOf(req);
-        const r = runAction({ ws: id, workspaces, vertical, cast: castFor(req), op, params: params(req), traceparent: req.headers.traceparent, route: { method: method.toUpperCase(), url: `/api${route}` } });
+        const p = params(req);
+        const r = runAction({ ws: id, workspaces, vertical, cast: castFor(req), op, params: p, traceparent: req.headers.traceparent, route: { method: method.toUpperCase(), url: `/api${route}` } });
+        runLog.record(id, vertical, op, p, r.outcome); // Rule 27: the decision, stored before its stdout line; a failed line never changes the answer
         res.set('traceparent', r.traceparent);
         const common = { workspace: id, mode, vertical, hops: r.hops, hopsTruncated: r.hopsTruncated, traceId: r.traceId, state: r.state };
         if (r.outcome.ok) return res.json({ ok: true, result: r.outcome.result, ...common });
@@ -213,7 +235,7 @@ export function createApp({ health = createHealth(), configFile = CONFIG, worksp
     }
   });
 
-  api.post('/reset', workspace, (req, res) => { const id = req.workspaceId; noStore(res); workspaces.reset(id); return res.json({ reset: 'ok', workspace: id }); });
+  api.post('/reset', workspace, (req, res) => { const id = req.workspaceId; noStore(res); workspaces.reset(id); runLog.reset(id); return res.json({ reset: 'ok', workspace: id }); });
   app.get('/api/shelf', (_req, res) => { res.set('Cache-Control', 'no-store'); res.json(shelfInfo()); }); // the header "Shelf" button
   api.use((_req, res) => res.status(404).json({ error: 'not_found' }));
   app.use('/api', api);

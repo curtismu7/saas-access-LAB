@@ -122,6 +122,18 @@ Other variables: `VITE_PORT` (Vite dev server, default 7251, `npm run dev -w web
 
 The header has a **Mock / Live** toggle on every page, and the banner and the mode chip show the same mode. Mock reads tables generated from the engine (six scripted scenarios per vertical; a scenario picker on the Request tab) and is read-only: every write control is off and the API answers 409. Live drives this workspace's engine (one per vertical), keeps its requests, grants, receipts, platform state, outbox, audit trail and lab clock, and lets you edit the policies and the integrations.
 
+## Run observability (rule 27)
+
+The Request tab shows, under the scenarios and the Live actions, what each layer logged for the run. The panel is the shared run-observability component, vendored byte-for-byte (`scripts/run-observability.pin.test.mjs` checks the pin).
+
+- **Where the logs live:** this lab writes one stdout line per Live decision: `<time> saas-access-lab decision step=... actor=... result=passed|stopped|unclear run=...`. Mock rows are not written to any log.
+- **Where they stream:** not shipped today. `shared/ping-log-collector/vector.yaml` does not list this lab's container.
+- **What the rows are:** decisions of this lab's own policy engine (a stand-in for the request, approval and reaper steps of a Privilege workflow), not a Ping product. Mock rows (`simulated`) are what the mock computed when its table was built. Live rows (`response`) are the lab's own answers, and each also has its stdout line.
+- **Not logged, and why:** person (no sign-in step), agent (no token exchange), Authorize (no such step), agent gateway (no gateway in front of the platforms), resource server (the platforms are simulated and no platform log exists). Configuration changes (policies, integrations, sync) are not decisions and leave no row.
+- **Time:** when the lab computed the row. Mock rows carry the lab clock, which is not wall time.
+- **Limits:** a Live run keeps its newest 500 rows (`truncated` is set when older rows go). A request that fails validation begins no run.
+- The lab reads no log and calls no product. Nothing here names a `RUN_OBS_` variable.
+
 ## Health, doctor and reset
 
 ```
