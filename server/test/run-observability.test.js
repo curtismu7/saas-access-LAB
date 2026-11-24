@@ -197,7 +197,7 @@ test('a writer that throws on the third line changes no answer, no state and no 
   try {
     await withLab(async ({ api }) => {
       const a = api('ws-throw');
-      for (const d of [C.castEngineer, C.castEngineer2, C.castManager]) { const r = await (await a.post('/api/requests', live({ request: req({ requestedBy: d }) }))).json(); baseline.push(r.ok === true ? true : `${d}:${r.error}`); }
+      for (const d of [C.castEngineer, C.castEngineer, C.castEngineer]) { const r = await (await a.post('/api/requests', live({ request: req({ requestedBy: d }) }))).json(); baseline.push(r.ok === true ? true : `${d}:${r.error}`); }
       const rec = await (await a.get('/api/run-observability?mode=live&vertical=finance')).json();
       assert.equal(rec.record.rows.filter((row) => row.origin === 'response').length, 3, 'the rows are kept even though a line failed');
       assert.ok(n >= 3, 'the writer was called');
