@@ -95,11 +95,13 @@ test('Live: each decision is one row (response origin) and one stdout line with 
     assert.equal(rec.record.source, 'real');
     assert.deepEqual(assertRunObservability(rec.record), []);
     assert.ok(rec.record.rows.length >= 1);
-    for (const row of rec.record.rows) assert.equal(row.origin, 'response');
+    const answers = rec.record.rows.filter((row) => row.origin !== 'not-logged'); // the core adds one not-logged placeholder per empty layer
+    for (const row of answers) assert.equal(row.origin, 'response');
+    assert.ok(answers.length >= 2, 'the request and the decision each left a row');
     assert.match(rec.record.runId, /^r\d+-[0-9a-f]{6}$/);
     assert.equal(rec.record.coverage.person, 'not-logged');
-    assert.equal(lines.length, rec.record.rows.length, 'one stdout line per row');
-    lines.forEach((line, i) => assert.ok(line.startsWith(`${rec.record.rows[i].at} saas-access-lab decision `), `line ${i} carries its row time`));
+    assert.equal(lines.length, answers.length, 'one stdout line per answer row');
+    lines.forEach((line, i) => assert.ok(line.startsWith(`${answers[i].at} saas-access-lab decision `), `line ${i} carries its row time`));
   });
 });
 
@@ -197,7 +199,7 @@ test('a writer that throws on the third line changes no answer, no state and no 
       const a = api('ws-throw');
       for (const d of [C.castEngineer, C.castEngineer2, C.castManager]) baseline.push((await (await a.post('/api/requests', live({ request: req({ requestedBy: d }) }))).json()).ok);
       const rec = await (await a.get('/api/run-observability?mode=live&vertical=finance')).json();
-      assert.equal(rec.record.rows.length, 3, 'the rows are kept even though a line failed');
+      assert.equal(rec.record.rows.filter((row) => row.origin === 'response').length, 3, 'the rows are kept even though a line failed');
       assert.ok(n >= 3, 'the writer was called');
       const all = stderr.join('');
       assert.ok(all.includes('EPIPE'), 'the code is named');
