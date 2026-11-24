@@ -24,7 +24,11 @@ describe("the run panel", () => {
     render(<RunObsPanel mode="mock" vertical="finance" scenario="self-approval" stamp={{}} />);
     await waitFor(() => expect(screen.getByTestId("ro-basis")).toBeTruthy());
     expect(screen.getByText(/The lab stopped a self-approval/)).toBeTruthy();
-    expect(screen.getByTestId("run-obs-note").textContent).toMatch(/not by a Ping product/);
+    const note = screen.getByTestId("run-obs-note").textContent;
+    expect(note).toMatch(/not by a Ping product/);
+    expect(note).toMatch(/Each row is one event/);
+    expect(note).toMatch(/Only policy points are decisions/);
+    expect(note).not.toMatch(/Each row is one decision/);
   });
 
   it("an empty answer (no run yet) is the panel's empty state, not an alert", async () => {

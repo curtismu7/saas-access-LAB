@@ -38,7 +38,7 @@ export default function RunObsPanel({ mode, vertical, scenario, stamp }) {
       {shown?.error && <p className="app-error" role="alert" data-testid="run-obs-error">The run could not be read ({shown.error}). Change the mode or the scenario to try again.</p>}
       {shown && !shown.error && <RunObservability record={shown.record} source={want.mode === "live" ? "real" : "mock"} streams={STREAMS} />}
       <p className="muted run-obs-note" data-testid="run-obs-note">
-        Each row is one decision made by this lab's own policy engine, not by a Ping product. Configuration changes (policies, integrations, sync) are not decisions and leave no row.
+        Each row is one event of this lab's own policy engine, not by a Ping product. Only policy points are decisions (allowed, refused or blocked); other rows are info. Configuration changes (policies, integrations, sync) leave no row.
         Mock rows are what the mock computed when its table was built. Live rows are the lab's own answers, each also one stdout line. No product is called and no log is read.
       </p>
     </section>

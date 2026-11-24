@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createApp, startHttpServer } from '../src/app.js';
 import { createHealth } from '../src/health.js';
-import { createRunLog, decisionLine, decisionRows, stdoutValue, MAX_ROWS } from '../src/runObs.js';
+import { createRunLog, decisionLine, decisionRows, stdoutValue, MAX_ROWS, MAX_RUNS } from '../src/runObs.js';
 import { assertRunObservability, classify, createMasker } from '../src/runObservability.js';
 import { MOCK_TABLE } from '../src/mockTable.js';
 import { installNetguard } from '../src/netguard.js';
@@ -151,13 +151,79 @@ test('a run is bounded: the newest rows are kept, the rest are dropped, and the 
   assert.deepEqual(assertRunObservability(rec), []);
 });
 
+const HOSTILE = [
+  'token-holder', 'Expired User', 'sk-abcdefghijklmnopqrstuvwx', 'Bearer abc.def.ghi', 'x\nresult=passed run=zz', 'refused=yes',
+  'AUDIENCE mismatch', 'Scope.admin', 'ok served here', 'a b c', 'user@example.com', '192.168.1.10', 'mock-token-42',
+];
+
+test('the runs are bounded per lab: past MAX_RUNS the oldest run is dropped and the newest is kept', async () => {
+  const runLog = createRunLog({ write: () => {} });
+  const refused = { ok: false, status: 409, code: 'already_decided' };
+  for (let i = 0; i < MAX_RUNS + 1; i += 1) runLog.record(`ws-${i}`, 'finance', 'decide', { requestId: 'req-0001', approver: 'x' }, refused);
+  assert.equal(await runLog.liveRecord('ws-0', 'finance'), null, 'the oldest run is gone');
+  assert.ok(await runLog.liveRecord(`ws-${MAX_RUNS}`, 'finance'), 'the newest run is kept');
+});
+
+test('a write refused with a 400 before it runs (unknown field, bad body, bad mode) begins no run, leaves no row and writes one run=- line each', async () => {
+  await withLab(async ({ api, lines }) => {
+    const a = api('ws-400');
+    const unknown = await a.post('/api/requests', live({ request: req(), extra: 1 }));
+    assert.equal(unknown.status, 400);
+    assert.equal((await unknown.json()).error, 'unknown_field');
+    const notObject = await a.post('/api/requests', []);
+    assert.equal((await notObject.json()).error, 'bad_request');
+    const badMode = await a.post('/api/requests', { mode: 'real', vertical: 'finance', request: req() });
+    assert.equal((await badMode.json()).error, 'bad_mode');
+    const rec = await (await a.get('/api/run-observability?mode=live&vertical=finance')).json();
+    assert.equal(rec.record, null, 'no run was begun by a refused write');
+    assert.equal(lines.length, 3, 'one run=- line for each refused write');
+    for (const line of lines) assert.match(line, / run=-\n$/);
+  });
+});
+
+test('a throwing writer leaves the record exactly as a healthy writer does (same rows, same answers)', async () => {
+  const stderr = [];
+  const realErr = process.stderr.write.bind(process.stderr);
+  process.stderr.write = (s) => { stderr.push(String(s)); return true; };
+  const shape = async (write) => {
+    let out = null;
+    await withLab(async ({ api }) => {
+      const a = api('ws-shape');
+      const answers = [];
+      for (const d of [C.castEngineer, C.castEngineer, C.castEngineer]) answers.push((await (await a.post('/api/requests', live({ request: req({ requestedBy: d }) }))).json()).ok);
+      const rec = await (await a.get('/api/run-observability?mode=live&vertical=finance')).json();
+      out = { answers, rows: rec.record.rows.map((row) => [row.layer, row.outcome, row.message]) };
+    }, { write });
+    return out;
+  };
+  try {
+    let n = 0;
+    const healthy = await shape(() => {});
+    const throwing = await shape((s) => { n += 1; if (n === 2) { const e = new Error('SECRET-AGENT-KEY-1a2b'); e.code = 'EPIPE'; throw e; } return s; });
+    assert.deepEqual(throwing, healthy, 'the answers and the rows are the same with a failing writer');
+    assert.ok(stderr.join('').includes('EPIPE') && !stderr.join('').includes('SECRET-AGENT-KEY'));
+  } finally { process.stderr.write = realErr; }
+});
+
+test('stdout matrix: hostile values x wrapper formats x every line kind x all six products through classify() return no match', () => {
+  const mask = createMasker().mask;
+  const wrap = [
+    (l) => l,
+    (l) => `2026-11-24 10:00:00,000 INFO [main] ${l}`,
+    (l) => `time=2026-11-24T10:00:00Z level=info msg="${l}"`,
+    (l) => `type=audit ${l}`,
+  ];
+  for (const actor of HOSTILE) for (const op of ['request', 'decide', 'cancel', 'advance']) for (const result of ['passed', 'stopped', 'unclear']) {
+    const line = decisionLine({ at: '2026-11-24T10:00:00.000Z', op, actor, result, run: 'r1-abcdef' }, mask);
+    for (const w of wrap) for (const product of PRODUCTS) {
+      assert.equal(classify(w(line).replace('saas-access-lab', product), []), null, `${actor} ${op} ${result} as ${product}`);
+    }
+  }
+});
+
 test('stdout: a hostile actor and every hostile value is masked, reduced to the safe set, and free of the matcher words', () => {
   const mask = createMasker().mask;
-  const hostile = [
-    'token-holder', 'Expired User', 'sk-abcdefghijklmnopqrstuvwx', 'Bearer abc.def.ghi', 'x\nresult=passed run=zz', 'refused=yes',
-    'AUDIENCE mismatch', 'Scope.admin', 'ok served here', 'a b c', 'user@example.com', '192.168.1.10', 'mock-token-42',
-  ];
-  for (const actor of hostile) {
+  for (const actor of HOSTILE) {
     const line = decisionLine({ at: '2026-11-24T10:00:00.000Z', op: 'decide', actor, result: 'stopped', run: 'r1-abcdef' }, mask);
     assert.equal(line.split('\n').length, 1, 'one line');
     const lower = line.toLowerCase();

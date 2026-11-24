@@ -177,14 +177,16 @@ export function createApp({ health = createHealth(), configFile = CONFIG, worksp
     api[method](route, workspace, (req, res, next) => {
       const id = req.workspaceId;
       noStore(res);
+      // Rule 27: a write refused with a 400 before it runs begins no run and leaves no row, but writes its one run=- stdout line.
+      const refusedBeforeRun = (body) => { runLog.record(id, null, op, {}, { ok: false, status: 400, code: body.error }); return res.status(400).json(body); };
       try {
-        if (!isObj(req.body)) return res.status(400).json({ error: 'bad_request' });
+        if (!isObj(req.body)) return refusedBeforeRun({ error: 'bad_request' });
         // A text, a key, a list, an object or a nesting over a bound (bounds.js), in the body or in the path, is refused whole before anything runs.
         if (overBounds(req.body) || overBounds(req.params)) return res.status(413).json({ error: 'payload_too_large', detail: TOO_BIG });
         const mode = modeOf(req.body.mode);
-        if (!mode) return res.status(400).json({ error: 'bad_mode', detail: 'mode must be mock or live' });
+        if (!mode) return refusedBeforeRun({ error: 'bad_mode', detail: 'mode must be mock or live' });
         if (mode === 'mock') return res.status(409).json({ error: 'mock_is_read_only', detail: 'Mock mode only reads tables: switch to Live to act' });
-        if (!Object.keys(req.body).every((k) => ['mode', 'vertical', 'refusalsAs200', ...keys].includes(k))) return res.status(400).json({ error: 'unknown_field', detail: 'the body carries a field the lab does not take' });
+        if (!Object.keys(req.body).every((k) => ['mode', 'vertical', 'refusalsAs200', ...keys].includes(k))) return refusedBeforeRun({ error: 'unknown_field', detail: 'the body carries a field the lab does not take' });
         const vertical = verticalOf(req);
         const p = params(req);
         const r = runAction({ ws: id, workspaces, vertical, cast: castFor(req), op, params: p, traceparent: req.headers.traceparent, route: { method: method.toUpperCase(), url: `/api${route}` } });

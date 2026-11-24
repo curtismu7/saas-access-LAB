@@ -10,6 +10,7 @@ import { randomBytes } from 'node:crypto';
 import { createMasker, createRunObservability, LAYERS } from './runObservability.js';
 
 export const MAX_ROWS = 500;
+export const MAX_RUNS = 500; // runs kept per lab: a new run past this drops the one written longest ago
 const SERVICE = 'saas-access-lab';
 const VALIDATION = new Set(['bad_duration']);
 const REFUSED_CODES = new Set(['level_above_policy', 'not_an_approver']);
@@ -52,6 +53,7 @@ export function decisionRows(op, params, outcome) {
         : [row('privilege', 'info', `${r.requestId} is waiting for approval`)];
     case 'decide':
       if (r.status === 'granted') return [row('privilege', 'allowed', `Final approval: ${r.requestId} is granted`)];
+      // A denial ends the request at the policy point (the lab stops the access), so it is refused; the approval steps before it are info.
       if (r.status === 'denied') return [row('privilege', 'refused', `${r.requestId} was denied by its approver`)];
       return [row('privilege', 'info', `An approval was recorded; ${r.requestId} waits for the next level`)];
     case 'cancel': return [row('privilege', 'info', `${r.requestId} was cancelled`)];
@@ -145,7 +147,13 @@ export function createRunLog({ write = () => {}, now = () => new Date().toISOStr
     }
     const key = keyOf(ws, vertical);
     let run = runs.get(key);
-    if (!run) { counter += 1; run = { runId: `r${counter}-${randomBytes(3).toString('hex')}`, rows: [], dropped: 0 }; runs.set(key, run); }
+    if (run) { runs.delete(key); runs.set(key, run); } // re-inserted: the map's first key is the run written longest ago
+    else {
+      if (runs.size >= MAX_RUNS) runs.delete(runs.keys().next().value);
+      counter += 1;
+      run = { runId: `r${counter}-${randomBytes(3).toString('hex')}`, rows: [], dropped: 0 };
+      runs.set(key, run);
+    }
     const stamped = rows.map((r) => ({ ...fields(r), at: now() }));
     for (const r of stamped) run.rows.push(r);
     while (run.rows.length > MAX_ROWS) { run.rows.shift(); run.dropped += 1; }
